@@ -240,7 +240,7 @@ li.card { background: #fff; border: 2px solid var(--line); border-radius: 12px; 
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1wik8mNABw63NCTB69y0wofilZZLcUTfL3NXKCduYIiakRyoBKt9ADdERuRAE3w4/exec';
 /* ============================ */
 
-const APP_VERSION = '3.0.0-phase3';
+const APP_VERSION = '3.1.0-phase3';
 const TIMEOUT_MS = 15000;
 
 /* ---------- 保存（使えない端末でも止まらないように） ---------- */
@@ -265,7 +265,7 @@ const S = {
   screen: 'loading',
   storeCode: store.get('storeCode', ''),
   deviceId: store.get('deviceId', '') || (() => { const id = 'D-' + uuid().slice(0, 8); store.set('deviceId', id); return id; })(),
-  prefs: Object.assign({ furigana: true, fs: 'm', sound: true }, store.get('prefs', {})),
+  prefs: Object.assign({ fs: 'm', sound: true, level: null }, store.get('prefs', {})),
   prefsOpen: false,
   init: null,          // サーバーの init 応答（端末にも保存し、つながらないときに使う）
   sold: new Set(),     // 販売済みの値札（個体ID）
@@ -367,9 +367,16 @@ function coinList(n) {
 }
 
 /* ---------- 表示の設定 ---------- */
+/* 対象レベル：1＝小学生 2＝中学・高校 3＝社会人・プロ。全体の きまり（設定）と、この端末だけの きりかえ */
+const LEVELS = { 1: '小学生', 2: '中学・高校', 3: '社会人・プロ' };
+function storeLevel() { return (S.init && S.init.settings && S.init.settings.level) || 1; }
+function effLevel() { return S.prefs.level || storeLevel(); }
+/** ふりがな：この端末で えらんで いなければ、レベル3 だけ なし */
+function furiganaOn() { return S.prefs.furiganaSet ? S.prefs.furigana !== false : effLevel() < 3; }
+function applyFurigana() { document.documentElement.classList.toggle('no-furi', !furiganaOn()); }
 function applyPrefs() {
   document.documentElement.dataset.fs = S.prefs.fs;
-  document.documentElement.classList.toggle('no-furi', !S.prefs.furigana);
+  applyFurigana();
   store.set('prefs', S.prefs);
 }
 
@@ -462,6 +469,7 @@ function updateBanner() {
 }
 function render() {
   updateBanner();
+  applyFurigana();
   document.getElementById('app').replaceChildren(VIEWS[S.screen]());
 }
 function go(screen) {
@@ -614,7 +622,9 @@ function prefsPanel() {
       }, current === value ? '✓ ' : '', text))));
   return h('details', { class: 'prefs', open: S.prefsOpen, ontoggle: e => { S.prefsOpen = e.target.open; } },
     h('summary', null, '⚙ ひょうじの せってい'),
-    toggle('ふりがな', [[true, 'あり'], [false, 'なし']], p.furigana, v => { p.furigana = v; }),
+    toggle('レベル', [[null, 'きまり（' + storeLevel() + '）'], [1, '1 ' + LEVELS[1]], [2, '2 ' + LEVELS[2]], [3, '3 ' + LEVELS[3]]], p.level || null, v => { p.level = v; }),
+    toggle('ふりがな', [['auto', 'レベルに あわせる'], [true, 'あり'], [false, 'なし']], p.furiganaSet ? p.furigana !== false : 'auto',
+      v => { if (v === 'auto') { p.furiganaSet = false; delete p.furigana; } else { p.furiganaSet = true; p.furigana = v; } }),
     toggle('もじの おおきさ', [['s', '小'], ['m', '中'], ['l', '大']], p.fs, v => { p.fs = v; }),
     toggle('おと', [[true, 'あり'], [false, 'なし']], p.sound, v => { p.sound = v; }),
     h('div', { class: 'pref' }, h('button', { class: 'btn sm stop', onclick: () => { S.storeCode = ''; store.set('storeCode', ''); S.msg = null; go('code'); } }, '店舗コードを いれなおす')));
@@ -1888,6 +1898,28 @@ VIEWS.admin = () => {
         : h('button', { class: 'btn stop', onclick: () => { a.confirm = 'clear'; render(); } }, '🗑 練習データを けす')),
 
     h('div', { class: 'panel' },
+      h('h3', null, '対象レベル（みんなの きまり）'),
+      h('p', null, 'いま：', h('b', null, storeLevel() + '　' + LEVELS[storeLevel()])),
+      chips([1, 2, 3].map(v => [v, v + ' ' + LEVELS[v]]), storeLevel(), async v => {
+        if (v === storeLevel()) return;
+        const r = await adminOp('saveSettings', { settings: { level: v } });
+        if (r) { await reloadInit(); a.msg = { type: 'ok', text: '✓ 対象レベルを「' + v + ' ' + LEVELS[v] + '」に しました。ほかの たんまつは、がめんを よみこみ なおすと かわります。' }; render(); }
+      }, '対象レベル'),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'かわる ところ：ふりがな（レベル3 は なし）、れんしゅう もんだいの さいしょの レベル。たんまつ ごとに かえたい ときは、トップの「⚙ ひょうじの せってい」で かえられます。')),
+
+    h('div', { class: 'panel' },
+      h('h3', null, 'トップに だす 部門'),
+      deptToggles(a),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, '「商品企画」と「仕入・在庫」は、さいしょは でて いません。')),
+
+    h('div', { class: 'panel' },
+      h('h3', null, '商品と メンバーの とうろく'),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn go', onclick: () => openMasters('products') }, '🏷 商品の とうろく・へんこう'),
+        h('button', { class: 'btn go', onclick: () => openMasters('members') }, '👤 メンバーの とうろく・へんこう')),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'スプレッドシートを ひらかずに、ここから とうろく できます。けさずに「うらない」「やすみ」に すると、これまでの きろくが まもられます。')),
+
+    h('div', { class: 'panel' },
       h('h3', null, 'この たんまつの 未送信の とりひき'),
       !S.queue.length ? h('p', { class: 'muted' }, 'ありません。') : h('ul', { class: 'lines' }, S.queue.map(q => h('li', { class: 'line' },
         h('b', null, q.clientTime.slice(5, 16).replace('T', ' ')), '　', yen(q.total), '　',
@@ -2409,7 +2441,7 @@ function viewForecastSave() {
   date.addEventListener('change', () => { m.saleDate = date.value; });
   const memo = h('textarea', { id: 'pl-memo', rows: 2, maxlength: 200, style: 'font:inherit;width:100%;max-width:36em;padding:8px;border:3px solid #333;border-radius:10px' }, m.memo);
   memo.addEventListener('input', () => { m.memo = memo.value; });
-  const ready = m.saleDate && (m.productId || m.name);
+  const ready = !!m.saleDate;
   return [
     h('div', { class: 'field' }, h('label', { for: 'pl-date' }, 'うる 日'), date),
     h('h3', null, 'どこで うる？'),
@@ -2420,6 +2452,7 @@ function viewForecastSave() {
 }
 async function submitForecast() {
   const x = S.pl, m = x.sim, c = planCalc(m, x.data.hourlyWage);
+  if (!m.productId && !String(m.name || '').trim()) { x.msg = { type: 'err', text: 'しょうひんの なまえを いれて ください。' }; render(); return; }
   x.sending = true; x.msg = null; render();
   try {
     const res = await api('POST', 'note', { recordId: m.recordId, kind: '予想', productId: m.productId, item: m.name, saleDate: m.saleDate, channel: m.channel,
@@ -2710,7 +2743,7 @@ function makeDrill(dept, level, count) {
 /* ---------- 練習問題の画面（時間制限なし。2回まちがえたら こたえを見られる） ---------- */
 function openDrill(dept) {
   const d = DRILL_SETS[dept] ? dept : '販売';
-  S.dr = { phase: 'setup', dept: d, level: settings().level || 1, count: 5, member: store.get('member', '') || '', msg: null };
+  S.dr = { phase: 'setup', dept: d, level: effLevel(), count: 5, member: store.get('member', '') || '', msg: null };
   go('drill');
 }
 function startDrill() {
@@ -2816,6 +2849,154 @@ VIEWS.drill = () => {
       !locked ? h('button', { class: 'btn ok big', disabled: x.input === '' || x.input === '-', onclick: drillAnswer }, 'こたえる') : null,
       locked ? h('button', { class: 'btn go big', onclick: drillNext }, x.i + 1 >= x.qs.length ? 'けっかを みる ▶' : 'つぎの もんだい ▶') : null));
 };
+/* =====================================================================
+ * 管理：トップに出す部門・商品・メンバー（スプレッドシートを開かずに登録する）
+ * ===================================================================== */
+function deptToggles(a) {
+  if (!a.depts) a.depts = settings().departments.slice();
+  const all = ['経営', '商品企画', '仕入・在庫', '生産', '販売', '会計・総務'];
+  const changed = JSON.stringify(all.filter(d => a.depts.includes(d))) !== JSON.stringify(all.filter(d => settings().departments.includes(d)));
+  return [
+    h('div', { class: 'chips', role: 'group', 'aria-label': 'トップに だす 部門' }, all.map(d => {
+      const on = a.depts.includes(d);
+      return h('button', { class: 'btn chip' + (on ? ' selected' : ''), 'aria-pressed': String(on),
+        onclick: () => { a.depts = on ? a.depts.filter(x => x !== d) : a.depts.concat([d]); render(); } }, on ? '✓ ' : '', DEPTS[d].icon, ' ', d);
+    })),
+    changed ? h('div', { class: 'row', style: 'margin-top:8px' },
+      h('button', { class: 'btn ok', disabled: a.sending || !a.depts.length, onclick: async () => {
+        const r = await adminOp('saveSettings', { settings: { departments: a.depts } });
+        if (r) { await reloadInit(); a.depts = settings().departments.slice(); a.msg = { type: 'ok', text: '✓ トップに だす 部門を かえました。' }; render(); }
+      } }, '✓ この 部門で ほぞん'),
+      h('button', { class: 'btn', onclick: () => { a.depts = settings().departments.slice(); render(); } }, 'もとに もどす'),
+      !a.depts.length ? h('span', { class: 'neg' }, '1つ いじょう えらんで ください') : null) : null,
+  ];
+}
+
+async function openMasters(kind) {
+  S.ms = { kind: kind, loading: true, edit: null, msg: null, sending: false };
+  go('masters');
+  await loadMasters();
+}
+async function loadMasters() {
+  const x = S.ms;
+  x.loading = true; x.error = null;
+  try { x.data = await api('POST', 'admin', { op: 'masters', adminPin: S.adminPin }); }
+  catch (e) {
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    if (e.code === 'BAD_PIN' || e.code === 'LOCKED') { S.adminPin = ''; openAdmin(); return; }
+    x.error = e;
+  }
+  x.loading = false;
+  if (S.screen === 'masters') render();
+}
+/** 数を じかに 入れる（先生むけの とうろく画面） */
+function numField(id, label, value, set, o) {
+  const el = h('input', { type: 'number', id: id, min: 0, max: o.max, step: o.step || '1', inputmode: o.step ? 'decimal' : 'numeric', value: value,
+    style: 'font:inherit;font-size:1.4rem;font-weight:800;width:7em;padding:6px 10px;border:3px solid #333;border-radius:10px;text-align:right' });
+  el.addEventListener('change', () => {
+    let v = Number(el.value);
+    if (!isFinite(v) || v < 0) v = 0;
+    v = Math.min(o.max, o.step ? Math.round(v * 100) / 100 : Math.round(v));
+    set(v);
+  });
+  return h('div', { class: 'field' }, h('label', { for: id }, label), h('span', null, el, ' ', o.unit), o.hint ? h('small', { class: 'muted' }, '　', o.hint) : null);
+}
+function textInput(id, value, set, opts) {
+  opts = opts || {};
+  const el = h('input', { type: 'text', id: id, value: value || '', maxlength: opts.max || 30, autocomplete: 'off', placeholder: opts.placeholder || '',
+    style: 'font:inherit;font-size:1.15rem;padding:8px 12px;border:3px solid #333;border-radius:10px;width:' + (opts.width || '16em') + ';max-width:100%' });
+  el.addEventListener('input', () => set(el.value));
+  return el;
+}
+const ICON_CHOICES = ['🍪', '🍞', '🥐', '🍰', '🍩', '🍙', '🥬', '🥕', '🍅', '🍎', '🍓', '🫙', '🍯', '🥛', '🧀', '🌸', '🪴', '🎁', '🧺', '🪵', '🧵', '🖼', '🔖', '📦'];
+
+VIEWS.masters = () => {
+  const x = S.ms, isP = x.kind === 'products';
+  const title = isP ? '🏷 商品の とうろく・へんこう' : '👤 メンバーの とうろく・へんこう';
+  const back = () => { S.adm = Object.assign(S.adm || {}, { msg: null }); go('admin'); };
+  if (x.loading && !x.data) return page(title, back, h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…'));
+  if (x.error) return page(title, back, note('err', x.error.message), h('button', { class: 'btn go', onclick: loadMasters }, '🔄 もういちど'));
+  if (x.edit) return isP ? viewProductForm() : viewMemberForm();
+  const d = x.data;
+  const list = isP ? d.products : d.members;
+  const newItem = isP
+    ? { id: '', name: '', kana: '', price: 100, cost: 0, target: 0, icon: '', order: '', active: true, dept: '' }
+    : { id: '', name: '', role: '生徒', group: '', active: true, dept: '' };
+  return page(title, back,
+    x.msg ? note(x.msg.type, x.msg.text) : null,
+    actions(h('button', { class: 'btn go big', onclick: () => { x.edit = Object.assign({}, newItem); x.msg = null; render(); } }, isP ? '＋ あたらしい 商品' : '＋ あたらしい メンバー')),
+    h('p', { class: 'muted' }, 'なおしたい ものを おして ください。', isP ? 'ねだんを かえたら、いんさつ ずみの ねふだは すりなおして ください。' : ''),
+    h('ul', { class: 'list' }, list.map(it => h('li', null, h('button', { class: 'btn', onclick: () => { x.edit = Object.assign({}, it, isP ? { order: it.order >= 100000 ? '' : it.order } : {}); x.msg = null; render(); } },
+      isP ? [it.icon ? it.icon + ' ' : '', h('b', null, it.name), '　', yen(it.price), h('small', { class: 'muted' }, '（ざいりょうひ ', yen(it.cost), '・', it.dept || '科なし', '）')]
+        : [h('b', null, it.name), h('small', { class: 'muted' }, '　', [it.role, it.group, it.dept || '科なし'].filter(Boolean).join('・'))],
+      !it.active ? h('span', { class: 'tag-voided' }, isP ? '　（うらない）' : '　（やすみ）') : null,
+      h('small', { class: 'muted' }, '　', it.id))))),
+    versionLine());
+};
+
+function viewProductForm() {
+  const x = S.ms, e = x.edit;
+  const orig = e.id ? x.data.products.find(p => p.id === e.id) : null;
+  const set = (k, v) => { e[k] = v; x.msg = null; render(); };
+  const priceChanged = orig && orig.price !== e.price;
+  return page(e.id ? '🏷 商品を なおす（' + e.id + '）' : '🏷 あたらしい 商品', () => { x.edit = null; x.msg = null; render(); },
+    x.msg ? note(x.msg.type, x.msg.text) : null,
+    h('div', { class: 'field' }, h('label', { for: 'mp-name' }, '製品名'), textInput('mp-name', e.name, v => { e.name = v; }, { max: 30, placeholder: 'れい：みそパン' })),
+    h('div', { class: 'field' }, h('label', { for: 'mp-kana' }, 'よみがな'), textInput('mp-kana', e.kana, v => { e.kana = v; }, { max: 40, placeholder: 'れい：みそぱん' })),
+    h('h3', null, 'どの ', rb('科', 'か'), 'の 商品？'),
+    chips([['', '科なし']].concat(schoolDepts().map(d => [d, d])), e.dept, v => set('dept', v), '科'),
+    numField('mp-price', 'ねだん（売値）', e.price, v => set('price', v), { max: 1000000, unit: '円' }),
+    numField('mp-cost', ['材料費（1こ）'], e.cost, v => set('cost', v), { max: 1000000, unit: '円', step: '0.01', hint: '小数は 2けた まで（れい：33.5）' }),
+    numField('mp-target', 'もくひょうの つくる かず', e.target, v => set('target', v), { max: 99999, unit: 'こ' }),
+    priceChanged ? note('err', '⚠ ねだんが ' + yen(orig.price) + ' → ' + yen(e.price) + ' に かわります。いんさつ ずみの ねふだは ふるい ねだんの ままなので、すりなおして ください（レジは あたらしい ねだんで うります）。') : null,
+    h('h3', null, 'アイコン'),
+    h('div', { class: 'chips', role: 'group', 'aria-label': 'アイコン' },
+      h('button', { class: 'btn chip' + (!e.icon ? ' selected' : ''), 'aria-pressed': String(!e.icon), onclick: () => set('icon', '') }, 'なし'),
+      ICON_CHOICES.map(ic => h('button', { class: 'btn chip' + (e.icon === ic ? ' selected' : ''), 'aria-pressed': String(e.icon === ic), 'aria-label': ic, onclick: () => set('icon', ic) }, ic))),
+    h('h3', null, 'うる？'),
+    chips([[true, 'うる'], [false, 'うらない（レジに ださない）']], e.active !== false, v => set('active', v), 'うる'),
+    h('p', { class: 'muted', style: 'font-size:0.85rem' }, '商品は けしません。うらなく なったら「うらない」に すると、これまでの うりあげの きろくは そのまま のこります。'),
+    actions(h('button', { class: 'btn ok big', disabled: x.sending, onclick: () => saveMaster('saveProduct', { product: e }) }, x.sending ? 'おくって います…' : '✓ ほぞん する')));
+}
+function viewMemberForm() {
+  const x = S.ms, e = x.edit;
+  const set = (k, v) => { e[k] = v; x.msg = null; render(); };
+  return page(e.id ? '👤 メンバーを なおす（' + e.id + '）' : '👤 あたらしい メンバー', () => { x.edit = null; x.msg = null; render(); },
+    x.msg ? note(x.msg.type, x.msg.text) : null,
+    h('div', { class: 'field' }, h('label', { for: 'mm-name' }, 'なまえ（画面に でる なまえ）'), textInput('mm-name', e.name, v => { e.name = v; }, { max: 20, placeholder: 'れい：流通 Cさん' })),
+    h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'フルネームで なくても かまいません。おなじ なまえの 人が いる ときは、ばんごうや 班を つけて ください。'),
+    h('h3', null, 'やくわり'),
+    chips([['生徒', '生徒'], ['先生', '先生'], ['', 'なし']].concat(e.role && !['生徒', '先生', ''].includes(e.role) ? [[e.role, e.role]] : []), e.role || '', v => set('role', v), 'やくわり'),
+    h('div', { class: 'field' }, h('label', { for: 'mm-group' }, '班（なくても よい）'), textInput('mm-group', e.group, v => { e.group = v; }, { max: 20, width: '10em', placeholder: 'れい：1班' })),
+    h('h3', null, 'どの ', rb('科', 'か'), '？'),
+    chips([['', '科なし']].concat(schoolDepts().map(d => [d, d])), e.dept, v => set('dept', v), '科'),
+    h('h3', null, 'いまは？'),
+    chips([[true, 'かつどう ちゅう'], [false, 'やすみ（たんとうしゃに ださない）']], e.active !== false, v => set('active', v), 'じょうたい'),
+    h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'メンバーは けしません。卒業や 異動の ときは「やすみ」に すると、これまでの きろくは そのまま のこります。'),
+    actions(h('button', { class: 'btn ok big', disabled: x.sending, onclick: () => saveMaster('saveMember', { member: e }) }, x.sending ? 'おくって います…' : '✓ ほぞん する')));
+}
+async function saveMaster(op, body) {
+  const x = S.ms;
+  const it0 = body.product || body.member;
+  if (!String(it0.name || '').trim()) { x.msg = { type: 'err', text: 'なまえを いれて ください。' }; render(); return; }
+  x.sending = true; x.msg = null; render();
+  try {
+    const r = await api('POST', 'admin', Object.assign({ op: op, adminPin: S.adminPin }, body));
+    beep(true);
+    const it = r.product || r.member;
+    x.msg = { type: 'ok', text: '✓ 「' + it.name + '」（' + it.id + '）を ' + (r.created ? 'とうろく' : 'ほぞん') + ' しました。'
+      + (r.priceChanged ? ' ねだんが ' + yen(r.oldPrice) + ' → ' + yen(it.price) + ' に かわりました。ねふだを すりなおして ください。' : '') };
+    x.edit = null; x.sending = false;
+    await Promise.all([loadMasters(), reloadInit()]);
+    render();
+    return;
+  } catch (e) {
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    if (e.code === 'BAD_PIN' || e.code === 'LOCKED') { S.adminPin = ''; }
+    x.msg = { type: 'err', text: e.message }; beep(false);
+  }
+  x.sending = false; render();
+}
 </script>
 </body>
 </html>
