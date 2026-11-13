@@ -58,6 +58,7 @@ h3 { font-size: 1rem; margin: 12px 0 8px; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: #fff; border-top: 2px solid var(--line);
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; justify-content: flex-end; align-items: center; gap: 16px; flex-wrap: wrap;
 }
+.actions.static { position: static; border-top: 0; background: transparent; padding: 12px 0; justify-content: flex-start; }
 .total-label { font-weight: 700; }
 .money { font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .huge { font-size: 3rem; }
@@ -146,6 +147,7 @@ h3 { font-size: 1rem; margin: 12px 0 8px; }
 .chart > svg { width: 100%; height: auto; display: block; }
 .legend { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 8px 0 0; }
 .legend li { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+@media (max-width: 600px) { .legend li { white-space: normal; } }
 .legend svg { width: 22px; height: 22px; flex: none; }
 .badge { display: inline-block; padding: 2px 10px; border-radius: 8px; font-weight: 800; border: 2px solid currentColor; margin-top: 4px; }
 
@@ -168,6 +170,16 @@ table.tbl th, table.tbl td { border: 1px solid var(--line); padding: 6px 10px; t
 table.tbl td.num, table.tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.tbl thead th { background: #eef0f2; }
 table.tbl td.num, table.tbl th.num { white-space: nowrap; }
+ul.cards { list-style: none; padding: 0; display: grid; gap: 12px; }
+.drill-q { font-size: 1.35rem; font-weight: 700; line-height: 1.7; background: #fff; border: 2px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+.drill-ans { display: flex; align-items: baseline; gap: 8px; font-size: 1.4rem; font-weight: 800; margin: 10px 0; }
+.drill-ans .v { min-width: 6em; text-align: right; font-size: 2.2rem; border-bottom: 4px solid #333; padding: 0 8px; font-variant-numeric: tabular-nums; }
+.drill-exp { background: #fffbe6; border: 2px solid #e8c400; border-radius: 12px; padding: 12px 16px; line-height: 1.7; }
+.keypad { display: grid; grid-template-columns: repeat(3, minmax(72px, 110px)); gap: 8px; margin: 10px 0; }
+.keypad .btn { font-size: 1.5rem; min-height: 64px; }
+li.card { background: #fff; border: 2px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+.counters .counter { margin-bottom: 6px; }
+.chart > svg { width: 100%; height: auto; max-width: 720px; }
 @media (max-width: 600px) {
   .bar { grid-template-columns: auto 1fr auto; gap: 8px; }
   .bar h1 { font-size: 1.2rem; }
@@ -228,7 +240,7 @@ table.tbl td.num, table.tbl th.num { white-space: nowrap; }
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1wik8mNABw63NCTB69y0wofilZZLcUTfL3NXKCduYIiakRyoBKt9ADdERuRAE3w4/exec';
 /* ============================ */
 
-const APP_VERSION = '2.5.0-phase2.5';
+const APP_VERSION = '3.0.0-phase3';
 const TIMEOUT_MS = 15000;
 
 /* ---------- 保存（使えない端末でも止まらないように） ---------- */
@@ -576,20 +588,19 @@ const JOBS = {
   labels: { icon: '🏷', label: () => 'ねふだの いんさつ', open: () => openLabelList() },
   timecard: { icon: '⏱', label: () => 'タイムカード', open: () => openTimecard() },
   closing: { icon: '🔒', label: () => 'レジじめ', open: () => openClosing(), when: () => settings().useCashClosing },
+  expense: { icon: '💴', label: () => [rb('経費', 'けいひ'), 'の きろく'], open: () => openExpense() },
+  plan: { icon: '💡', label: () => ['ねだんと うれる かずの ', rb('予想', 'よそう')], open: () => openPlan() },
+  drill: { icon: '✏', label: () => 'れんしゅう もんだい', open: () => openDrill(S.dept) },
 };
 const DEPTS = {
-  '経営': { icon: '🏢', label: () => rb('経営', 'けいえい'), jobs: ['dashboard', 'timecard'],
-    later: ['ぜんたいの ようすを 1がめんで みる', 'ねだんを かえる・ついかで つくる などの けいえいの はんだん', 'れんしゅう もんだい'] },
-  '商品企画': { icon: '💡', label: () => [rb('商品', 'しょうひん'), rb('企画', 'きかく')], jobs: ['timecard'],
-    later: ['ねだんを かんがえる', '何こ うれば くろじに なるかの けいさん（損益分岐点）', 'うれる かずの よそう', 'れんしゅう もんだい'] },
-  '仕入・在庫': { icon: '📦', label: () => [rb('仕入', 'しいれ'), '・', rb('在庫', 'ざいこ')], jobs: ['timecard'],
-    later: ['ざいりょうの かくにん', 'ひつような ざいりょうの けいさん', 'たなおろし', 'れんしゅう もんだい'] },
-  '生産': { icon: '🔨', label: () => rb('生産', 'せいさん'), jobs: ['production', 'labels', 'timecard'],
-    later: ['ざいりょうから 何こ つくれるかの けいさん', 'れんしゅう もんだい'] },
-  '販売': { icon: '🛒', label: () => rb('販売', 'はんばい'), jobs: ['register', 'sales', 'void', 'timecard'],
-    later: ['こすうと うりあげの しょうごう', 'れんしゅう もんだい'] },
-  '会計・総務': { icon: '🧮', label: () => [rb('会計', 'かいけい'), '・', rb('総務', 'そうむ')], jobs: ['dashboard', 'closing', 'timecard'],
-    later: ['けいひの きろく', 'じぶんで けっさんを けいさんする', 'れんしゅう もんだい'] },
+  '経営': { icon: '🏢', label: () => rb('経営', 'けいえい'), jobs: ['dashboard', 'plan', 'drill', 'timecard'], later: [] },
+  '商品企画': { icon: '💡', label: () => [rb('商品', 'しょうひん'), rb('企画', 'きかく')], jobs: ['plan', 'drill', 'timecard'], later: [] },
+  '仕入・在庫': { icon: '📦', label: () => [rb('仕入', 'しいれ'), '・', rb('在庫', 'ざいこ')], jobs: ['drill', 'timecard'],
+    later: ['ざいりょうの かくにん', 'ひつような ざいりょうの けいさん', 'たなおろし'] },
+  '生産': { icon: '🔨', label: () => rb('生産', 'せいさん'), jobs: ['production', 'labels', 'drill', 'timecard'],
+    later: ['ざいりょうから 何こ つくれるかの けいさん（ざいりょうの とうろく）'] },
+  '販売': { icon: '🛒', label: () => rb('販売', 'はんばい'), jobs: ['register', 'sales', 'void', 'drill', 'timecard'], later: [] },
+  '会計・総務': { icon: '🧮', label: () => [rb('会計', 'かいけい'), '・', rb('総務', 'そうむ')], jobs: ['dashboard', 'expense', 'closing', 'drill', 'timecard'], later: [] },
 };
 
 function prefsPanel() {
@@ -630,7 +641,7 @@ VIEWS.dept = () => {
     h('header', { class: 'bar' }, backBtn(() => go('top')), h('h1', null, d.icon, ' ', d.label()), h('span')),
     h('div', { class: 'grid', style: 'margin-top:20px' }, jobs.map(j => h('button', { class: 'btn go job', onclick: j.open },
       h('span', { class: 'icon', 'aria-hidden': 'true' }, j.icon), j.label()))),
-    h('section', { class: 'later' }, h('h3', null, 'これから つかえるように なる しごと'), h('ul', null, d.later.map(t => h('li', null, t)))),
+    d.later.length ? h('section', { class: 'later' }, h('h3', null, 'これから つかえるように なる しごと'), h('ul', null, d.later.map(t => h('li', null, t)))) : null,
     versionLine());
 };
 function backToDept() { go(S.dept ? 'dept' : 'top'); }
@@ -1927,16 +1938,58 @@ function printPaperForm() {
 /* =====================================================================
  * 画面：決算（レベル1）
  * ===================================================================== */
-async function openDashboard() {
-  S.dash = { loading: true };
+/** 期間の えらびかた → from・to（yyyy-MM-dd） */
+function periodRange(kind) {
+  const t = localDate(), y = +t.slice(0, 4), m = +t.slice(5, 7);
+  const pad = n => ('0' + n).slice(-2);
+  if (kind === 'month') return { from: y + '-' + pad(m) + '-01', to: t };
+  if (kind === 'lastMonth') {
+    const ly = m === 1 ? y - 1 : y, lm = m === 1 ? 12 : m - 1;
+    return { from: ly + '-' + pad(lm) + '-01', to: ly + '-' + pad(lm) + '-' + pad(new Date(ly, lm, 0).getDate()) };
+  }
+  if (kind === 'year') {
+    const fs = settings().fiscalStartMonth || 4, fy = m >= fs ? y : y - 1;
+    return { from: fy + '-' + pad(fs) + '-01', to: t };
+  }
+  return { from: '', to: '' };
+}
+async function openDashboard(p) {
+  if (p && p.kind) S.dashPeriod = Object.assign({}, p, p.kind === 'day' || p.kind === 'custom' ? {} : periodRange(p.kind));
+  const per = S.dashPeriod || (S.dashPeriod = { kind: 'all', from: '', to: '' });
+  const dept = S.dash && S.dash.dept;
+  S.dash = { loading: true, dept: dept };
   go('dashboard');
   try {
-    S.dash = { data: await api('GET', 'dashboard') };
+    S.dash = { data: await api('GET', 'dashboard', per.from || per.to ? { from: per.from, to: per.to } : {}), dept: dept };
   } catch (e) {
     if (e.code === 'UNAUTHORIZED') return toCodeScreen();
-    S.dash = { error: e };
+    S.dash = { error: e, dept: dept };
   }
   if (S.screen === 'dashboard') render();
+}
+function periodPicker(d) {
+  const per = S.dashPeriod || { kind: 'all' };
+  const pick = kind => {
+    if (kind === 'day') { S.dashPeriod = Object.assign({}, per, { kind: 'day' }); render(); return; }
+    if (kind === 'custom') { S.dashPeriod = Object.assign({}, per, { kind: 'custom' }); render(); return; }
+    openDashboard({ kind: kind });
+  };
+  const box = [chips([['all', 'ぜんぶ'], ['year', 'こんねんど'], ['month', 'こんげつ'], ['lastMonth', 'せんげつ'], ['day', 'うった 日'], ['custom', 'きかんを えらぶ']], per.kind, pick, 'きかん')];
+  if (per.kind === 'day') {
+    const sel = h('select', { id: 'dash-day', 'aria-label': 'うった 日', style: 'font:inherit;font-size:1.1rem;padding:8px;border:3px solid #333;border-radius:10px;max-width:100%' },
+      h('option', { value: '' }, '― 日を えらぶ ―'),
+      (d.salesDays || []).map(x => h('option', { value: x.date, selected: per.from === x.date && per.to === x.date }, x.date + '　' + x.channels.join('・'))));
+    sel.addEventListener('change', () => { if (sel.value) openDashboard({ kind: 'day', from: sel.value, to: sel.value }); });
+    box.push(h('div', { class: 'field', style: 'margin-top:8px' }, h('label', { for: 'dash-day' }, 'うった 日'), sel));
+  }
+  if (per.kind === 'custom') {
+    const f = h('input', { type: 'date', id: 'dash-from', value: per.from || '' });
+    const t = h('input', { type: 'date', id: 'dash-to', value: per.to || localDate() });
+    box.push(h('div', { class: 'chips', style: 'margin-top:8px;align-items:center' },
+      h('label', { for: 'dash-from' }, 'はじめ'), f, h('label', { for: 'dash-to' }, 'おわり'), t,
+      h('button', { class: 'btn go sm', onclick: () => { if (f.value && t.value) openDashboard({ kind: 'custom', from: f.value, to: t.value }); } }, 'この きかんで みる')));
+  }
+  return box;
 }
 
 function fmtMinutes(min) {
@@ -1954,12 +2007,12 @@ function plRow(sign, label, expl, amount, extra, cls) {
 VIEWS.dashboard = () => {
   const head = h('header', { class: 'bar' }, backBtn(backToDept),
     h('h1', null, rb('決算', 'けっさん'), '（せいせきひょう）'),
-    h('button', { class: 'btn go sm', onclick: openDashboard }, '🔄 さいしんに する'));
+    h('button', { class: 'btn go sm', onclick: () => openDashboard() }, '🔄 さいしんに する'));
   if (!S.dash || S.dash.loading) return h('div', { class: 'screen' }, head, h('p', { class: 'big', role: 'status' }, 'けいさん ちゅう…'));
   if (S.dash.error) {
     return h('div', { class: 'screen' }, head,
       h('p', { class: 'note err', role: 'alert' }, S.dash.error.message),
-      h('button', { class: 'btn go', onclick: openDashboard }, '🔄 もういちど'));
+      h('button', { class: 'btn go', onclick: () => openDashboard() }, '🔄 もういちど'));
   }
   const d = S.dash.data;
   const sel = S.dash.dept || '';
@@ -1986,7 +2039,16 @@ VIEWS.dashboard = () => {
     : h('div', { class: 'badge', style: 'color:var(--stop)' }, '▲ あかじ（そんを した）');
   const cnt = (label, n) => h('div', { class: 'kv' }, h('div', { class: 'k' }, label), h('div', { class: 'big' }, n, 'こ'));
 
+  const per = d.period || {};
+  const chTable = (d.channels || []).length ? h('div', { style: 'overflow-x:auto' }, h('table', { class: 'tbl' },
+    h('thead', null, h('tr', null, h('th', null, 'はんばい'), ['うった日', '売上', '1日あたり', '材料費（売れた分）', '限界利益', '客単価'].map(t => h('th', { class: 'num' }, t)))),
+    h('tbody', null, d.channels.map(c => h('tr', null, h('td', null, c.channel), h('td', { class: 'num' }, c.days + '日'), num(c.sales),
+      h('td', { class: 'num' }, c.salesPerDay === null ? '―' : yen(c.salesPerDay)), num(c.soldCost), h('td', { class: 'num' }, h('b', null, yenNode(c.marginalProfit))),
+      h('td', { class: 'num' }, c.avgTicket === null ? '―' : yen(c.avgTicket))))))) : null;
   return h('div', { class: 'screen' }, head,
+    periodPicker(d),
+    h('p', { class: 'big', style: 'margin:10px 0 0' }, 'きかん：', per.from || per.to ? (per.from === per.to ? per.from : (per.from || 'さいしょ') + ' 〜 ' + (per.to || 'きょう')) : 'ぜんぶ'),
+    per.from || per.to ? note('', 'きかんを くぎった けっさん では、ざいりょうひを「うれた ぶん ＋ しっぱい（ロス）」で かぞえます。うれのこりは ざいこ として つぎの きかんに もちこします。') : null,
     h('p', { class: 'muted' }, 'さいごに けいさん した じこく：', d.updatedAt),
     deptChips,
     selDept ? note('', sel + ' の けっさん です。うりあげと ざいりょうひは この科の しょうひん、じんけんひは この科の タイムカード、けいひは この科の けいひ です。共通費（' + yen(d.commonExpenses) + '）は ふくみません。') : null,
@@ -2002,6 +2064,8 @@ VIEWS.dashboard = () => {
       cnt('つくった かず', m.madeQty), cnt('うれた かず', m.soldQty), cnt('うれのこり', m.leftoverQty), cnt('しっぱい（ロス）', m.lossQty)),
     deptTable ? [h('h3', null, rb('科', 'か'), 'ごとの くらべ'), deptTable,
       h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'ぜんたいの えいぎょうりえき ＝ 科ごとの えいぎょうりえきの ごうけい － 共通費')] : null,
+    chTable ? [h('h3', null, 'はんばいの しゅるい ごとの くらべ'), chTable,
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'じんけんひと けいひは はんばいの しゅるいに わけられないので、', rb('限界利益', 'げんかいりえき'), '（うりあげ － うれた ぶんの ざいりょうひ）で くらべます。')] : null,
     versionLine());
 };
 
@@ -2076,6 +2140,682 @@ function chartLegend(m) {
 
 /* ---------- 起動 ---------- */
 boot();
+/* =====================================================================
+ * 画面：経費の記録（会計・総務）。取消は管理者の暗証番号で、マイナスの行を足す
+ * ===================================================================== */
+async function openExpense() {
+  S.ex = { mode: 'list', loading: true, msg: null, sel: null, pin: '', sending: false };
+  go('expense');
+  await loadExpenses();
+}
+async function loadExpenses() {
+  const x = S.ex;
+  x.loading = true; x.error = null;
+  try { x.data = await api('GET', 'expenses'); } catch (e) { if (e.code === 'UNAUTHORIZED') return toCodeScreen(); x.error = e; }
+  x.loading = false;
+  if (S.screen === 'expense') render();
+}
+function newExpenseForm() {
+  return { recordId: uuid(), date: localDate(), item: null, dept: null, amount: 0, memo: '' };
+}
+VIEWS.expense = () => {
+  const x = S.ex;
+  const title = ['💴 ', rb('経費', 'けいひ'), 'の きろく'];
+  if (x.mode === 'new') return viewExpenseForm();
+  if (x.sel) {
+    const e = x.sel;
+    return page(title, () => { x.sel = null; x.msg = null; render(); },
+      h('h2', null, 'この けいひを とりけし ますか？'),
+      x.msg ? note(x.msg.type, x.msg.text) : null,
+      h('dl', { class: 'sum' },
+        h('dt', null, 'ひづけ'), h('dd', null, e.date),
+        h('dt', null, rb('費目', 'ひもく')), h('dd', null, e.item),
+        h('dt', null, rb('科', 'か')), h('dd', null, e.dept || '共通（科に わけない）'),
+        h('dt', null, 'きんがく'), h('dd', null, h('b', { class: 'money' }, yen(e.amount))),
+        e.memo ? [h('dt', null, 'メモ'), h('dd', null, e.memo)] : null),
+      h('p', { class: 'muted' }, 'もとの きろくは のこり、マイナスの きろくが ついか されます。'),
+      pinField(x),
+      actions(h('button', { class: 'btn danger big', disabled: x.sending, onclick: submitExpenseVoid }, x.sending ? 'おくって います…' : ['✖ ', rb('取消', 'とりけし'), 'する'])));
+  }
+  const d = x.data;
+  const body = x.loading && !d ? h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…')
+    : x.error ? [note('err', x.error.message), h('button', { class: 'btn go', onclick: loadExpenses }, '🔄 もういちど')]
+      : [
+        d.practice ? note('', '✏ れんしゅう ちゅう なので、れんしゅうの けいひ だけを ひょうじ して います（けっさんには はいりません）。') : null,
+        h('p', { class: 'muted' }, d.from, ' 〜 ', d.to, ' の けいひ'),
+        h('div', { class: 'sum3' },
+          h('div', { class: 'kv' }, h('div', { class: 'k' }, rb('合計', 'ごうけい')), h('div', { class: 'money' }, yen(d.total))),
+          Object.keys(d.byDept).map(k => h('div', { class: 'kv' }, h('div', { class: 'k' }, k), h('div', { class: 'money' }, yen(d.byDept[k]))))),
+        !d.items.length ? h('p', { class: 'muted' }, 'まだ けいひの きろくは ありません。')
+          : h('ul', { class: 'list' }, d.items.map(e => h('li', null, h('button', {
+            class: 'btn', disabled: e.voided, onclick: () => { x.sel = e; x.msg = null; render(); },
+          }, h('b', null, e.date.slice(5).replace('-', '/')), '　', e.item, '　', h('small', { class: 'muted' }, e.dept || '共通'), '　', h('b', null, yen(e.amount)),
+          e.memo ? h('small', { class: 'muted' }, '　', e.memo) : null,
+          e.voided ? h('span', { class: 'tag-voided' }, '　（とりけし ずみ）') : null)))),
+      ];
+  return page(title, backToDept,
+    x.msg ? note(x.msg.type, x.msg.text) : null,
+    actions(h('button', { class: 'btn go big', onclick: () => { x.mode = 'new'; x.form = newExpenseForm(); x.msg = null; render(); } }, '＋ けいひを きろく する')),
+    h('h2', null, 'これまでの けいひ（こんねんど）'),
+    body,
+    versionLine());
+};
+function viewExpenseForm() {
+  const x = S.ex, f = x.form;
+  const dateInput = h('input', { type: 'date', id: 'ex-date', value: f.date, max: localDate() });
+  dateInput.addEventListener('change', () => { f.date = dateInput.value; });
+  const amt = h('input', { type: 'number', id: 'ex-amount', min: 0, max: 10000000, inputmode: 'numeric', value: f.amount || '',
+    style: 'font:inherit;font-size:1.6rem;font-weight:800;width:8em;padding:6px 10px;border:3px solid #333;border-radius:10px;text-align:right' });
+  amt.addEventListener('change', () => { f.amount = Math.max(0, Math.min(10000000, parseInt(amt.value, 10) || 0)); render(); });
+  const memo = h('input', { type: 'text', id: 'ex-memo', value: f.memo, maxlength: 100, autocomplete: 'off',
+    style: 'font:inherit;padding:8px 12px;border:3px solid #333;border-radius:10px;width:20em;max-width:100%' });
+  memo.addEventListener('input', () => { f.memo = memo.value; });
+  const ready = f.date && f.item && f.dept !== null && f.amount > 0;
+  return page(['💴 ', rb('経費', 'けいひ'), 'を きろく する'], () => { x.mode = 'list'; x.msg = null; render(); },
+    x.msg ? note(x.msg.type, x.msg.text) : null,
+    h('div', { class: 'field' }, h('label', { for: 'ex-date' }, 'つかった 日'), dateInput),
+    h('h3', null, 'なにに つかった？（', rb('費目', 'ひもく'), '）'),
+    chips(settings().expenseItems.map(i => [i, i]), f.item, v => { f.item = v; render(); }, '費目'),
+    h('h3', null, 'どの ', rb('科', 'か'), 'の けいひ？'),
+    chips([['', '共通（科に わけない）']].concat(schoolDepts().map(d => [d, d])), f.dept, v => { f.dept = v; render(); }, '科'),
+    h('h3', null, 'きんがく'),
+    h('div', { class: 'chips', style: 'align-items:center' }, amt, h('span', { class: 'big' }, '円')),
+    h('div', { class: 'cash' }, [10, 100, 1000, 10000].map(v => h('button', { class: 'btn sm', onclick: () => { f.amount = Math.min(10000000, f.amount + v); render(); } }, '＋', v.toLocaleString('ja-JP'), '円')),
+      h('button', { class: 'btn sm stop', onclick: () => { f.amount = 0; render(); } }, '✖ 0円に もどす')),
+    h('div', { class: 'field' }, h('label', { for: 'ex-memo' }, 'メモ（なくても よい）'), memo),
+    h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'レシートは 先生に わたして ください。'),
+    actions(h('button', { class: 'btn ok big', disabled: !ready || x.sending, onclick: submitExpense }, x.sending ? 'おくって います…' : ['✓ ', yen(f.amount), ' を きろく する'])));
+}
+async function submitExpense() {
+  const x = S.ex, f = x.form;
+  x.sending = true; x.msg = null; render();
+  try {
+    const res = await api('POST', 'expense', { recordId: f.recordId, date: f.date, item: f.item, dept: f.dept, amount: f.amount, memo: f.memo, memberId: store.get('member', '') });
+    beep(true);
+    x.mode = 'list';
+    x.msg = { type: 'ok', text: '✓ ' + f.item + ' ' + yen(f.amount) + ' を きろく しました' + (res.practice ? '（れんしゅう）' : '') + '。' };
+    x.form = null;
+    x.sending = false;
+    await loadExpenses();
+    return;
+  } catch (e) {
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    x.msg = { type: 'err', text: e.code === 'NETWORK' ? 'つうしん できませんでした。Wi-Fi を たしかめて、もういちど おして ください（2かい おしても 1けん だけ きろく されます）。' : e.message }; beep(false);
+  }
+  x.sending = false; render();
+}
+async function submitExpenseVoid() {
+  const x = S.ex;
+  const pin = pinValue(x);
+  if (!pin) { x.msg = { type: 'err', text: 'あんしょう ばんごうを いれて ください。' }; render(); return; }
+  x.sending = true; x.msg = null; render();
+  try {
+    await api('POST', 'expenseVoid', { recordId: x.voidId || (x.voidId = uuid()), originRecordId: x.sel.recordId, adminPin: pin, memberId: store.get('member', '') });
+    S.adminPin = pin; beep(true);
+    x.msg = { type: 'ok', text: '✓ ' + x.sel.item + ' ' + yen(x.sel.amount) + ' を とりけし ました。' };
+    x.sel = null; x.voidId = null; x.sending = false;
+    await loadExpenses();
+    return;
+  } catch (e) {
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    forgetPinIfBad(e);
+    x.msg = { type: 'err', text: e.message }; beep(false);
+  }
+  x.sending = false; render();
+}
+/* =====================================================================
+ * 画面：ねだんと うれる かずの 予想（商品企画・経営）
+ * 記録に残らないシミュレーション ＋ 予想の保存 → 販売日のあとに じっさいと くらべて ふりかえる
+ * ===================================================================== */
+async function openPlan() {
+  S.pl = { tab: 'sim', loading: true, msg: null, sending: false };
+  go('plan');
+  await loadPlan();
+}
+async function loadPlan() {
+  const x = S.pl;
+  x.loading = true; x.error = null;
+  try { x.data = await api('GET', 'plan'); } catch (e) { if (e.code === 'UNAUTHORIZED') return toCodeScreen(); x.error = e; }
+  x.loading = false;
+  if (x.data && !x.sim) pickPlanProduct(x.data.products[0] ? x.data.products[0].id : '');
+  if (S.screen === 'plan') render();
+}
+/** これまでの 1日あたりの売れた数から、予想の めやすを出す */
+function suggestForecast(p, channel) {
+  if (!p) return null;
+  const rows = p.byChannel.filter(c => !channel || c.channel === channel);
+  if (!rows.length) return null;
+  const days = rows.reduce((a, c) => a + c.days, 0), qty = rows.reduce((a, c) => a + c.qty, 0);
+  return days ? Math.round(qty / days) : null;
+}
+function pickPlanProduct(id) {
+  const x = S.pl;
+  const p = x.data.products.find(q => q.id === id) || null;
+  const prev = x.sim || {};
+  const made = p ? Math.max(10, Math.ceil((suggestForecast(p, prev.channel) || 10) * 1.2)) : 20;
+  x.sim = {
+    productId: p ? p.id : '', name: p ? p.name : (prev.productId === '' ? prev.name : ''),
+    price: p ? p.price : 100, cost: p ? Math.round(p.cost) : 40, made: made,
+    forecast: p ? Math.min(made, suggestForecast(p, prev.channel) || Math.round(made * 0.8)) : 16,
+    minutes: 60, expenses: 0, channel: prev.channel || '', saleDate: prev.saleDate || localDate(), memo: '', recordId: uuid(),
+  };
+}
+/** 予想の計算（純粋な関数） */
+function planCalc(m, wage) {
+  const sold = Math.min(m.forecast, m.made);
+  const unitMargin = m.price - m.cost;
+  const labor = Math.round(m.minutes / 60 * wage);
+  const fixed = labor + m.expenses;
+  const bep = unitMargin > 0 ? Math.ceil(fixed / unitMargin) : null;
+  const sales = m.price * sold;
+  const material = m.cost * m.made;
+  const leftover = m.made - sold;
+  const profit = sales - material - fixed;
+  return { sold: sold, unitMargin: unitMargin, labor: labor, fixed: fixed, bep: bep, sales: sales, material: material, leftover: leftover, leftoverCost: m.cost * leftover, profit: profit };
+}
+function bepChart(m, c) {
+  const W = 640, H = 300, X0 = 84, Y0 = 250, PW = W - X0 - 20, PH = 220;
+  const qMax = Math.max(m.made, c.bep ? Math.ceil(c.bep * 1.6) : 0, 10);
+  const yMax = Math.max(m.price * qMax, c.fixed + m.cost * qMax, 1);
+  const X = q => X0 + q / qMax * PW, Y = v => Y0 - v / yMax * PH;
+  const summary = 'うりあげの せんと ひようの せんが まじわる ところが そんえきぶんきてん' + (c.bep ? '（' + c.bep + 'こ）' : '（もうけが でない ねだん）') + '。よそうは ' + c.sold + 'こ。';
+  const el = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': summary });
+  el.append(svg('line', { x1: X0, y1: Y0, x2: X0 + PW, y2: Y0, stroke: '#333', 'stroke-width': 2 }));
+  el.append(svg('line', { x1: X0, y1: Y0, x2: X0, y2: Y0 - PH, stroke: '#333', 'stroke-width': 2 }));
+  el.append(svg('text', { x: X0 + PW, y: Y0 + 26, 'text-anchor': 'end', 'font-size': 15, fill: '#333' }, 'うれた かず（こ）→'));
+  el.append(svg('text', { x: X0 - 6, y: Y0 + 18, 'text-anchor': 'end', 'font-size': 13, fill: '#333' }, '0'));
+  el.append(svg('text', { x: X0 + PW, y: Y0 + 44, 'text-anchor': 'end', 'font-size': 13, fill: '#555' }, qMax + 'こ'));
+  el.append(svg('text', { x: X0 - 6, y: Y0 - PH + 5, 'text-anchor': 'end', 'font-size': 13, fill: '#555' }, nf(Math.round(yMax)) + '円'));
+  // こていひ（点線）・ひよう（破線）・うりあげ（実線）
+  el.append(svg('line', { x1: X(0), y1: Y(c.fixed), x2: X(qMax), y2: Y(c.fixed), stroke: '#6b6b6b', 'stroke-width': 3, 'stroke-dasharray': '2 6', 'stroke-linecap': 'round' }));
+  el.append(svg('line', { x1: X(0), y1: Y(c.fixed), x2: X(qMax), y2: Y(c.fixed + m.cost * qMax), stroke: '#b35900', 'stroke-width': 4, 'stroke-dasharray': '12 6' }));
+  el.append(svg('line', { x1: X(0), y1: Y(0), x2: X(qMax), y2: Y(m.price * qMax), stroke: '#1559b0', 'stroke-width': 5 }));
+  const lab = (x, y, t, fill) => el.append(svg('text', { x: x, y: y, 'text-anchor': 'end', 'font-size': 16, 'font-weight': 800, fill: fill, stroke: '#fff', 'stroke-width': 4, 'paint-order': 'stroke' }, t));
+  lab(X(qMax) - 4, Y(m.price * qMax) - 8, 'うりあげ（じっせん）', '#1559b0');
+  lab(X(qMax) - 4, Y(c.fixed + m.cost * qMax) + 22, 'ひよう（はせん）', '#b35900');
+  lab(X(qMax) - 4, Y(c.fixed) - 8, 'こていひ（てんせん）', '#555');
+  // よそうの かず
+  el.append(svg('line', { x1: X(c.sold), y1: Y0, x2: X(c.sold), y2: Y0 - PH, stroke: '#2e7d32', 'stroke-width': 3 }));
+  el.append(svg('text', { x: X(c.sold) + 6, y: Y0 - PH + 16, 'font-size': 15, 'font-weight': 800, fill: '#2e7d32' }, 'よそう ' + c.sold + 'こ'));
+  if (c.bep && c.bep <= qMax) {
+    el.append(svg('circle', { cx: X(c.bep), cy: Y(m.price * c.bep), r: 9, fill: '#fff', stroke: '#b3261e', 'stroke-width': 4 }));
+    const right = X(c.bep) > W - 230;
+    el.append(svg('text', { x: X(c.bep) + (right ? -12 : 12), y: Y(m.price * c.bep) + 30, 'text-anchor': right ? 'end' : 'start', 'font-size': 15, 'font-weight': 800, fill: '#b3261e', stroke: '#fff', 'stroke-width': 4, 'paint-order': 'stroke' }, 'そんえきぶんきてん ' + c.bep + 'こ'));
+  }
+  return el;
+}
+VIEWS.plan = () => {
+  const x = S.pl;
+  const title = ['💡 ねだんと うれる かずの ', rb('予想', 'よそう')];
+  const tabs = chips([['sim', '🧮 けいさん して みる'], ['list', '📒 よそうと じっさい']], x.tab, v => { x.tab = v; x.msg = null; render(); }, 'がめん');
+  if (x.loading && !x.data) return page(title, backToDept, h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…'));
+  if (x.error) return page(title, backToDept, note('err', x.error.message), h('button', { class: 'btn go', onclick: loadPlan }, '🔄 もういちど'));
+  if (x.tab === 'list') return page(title, backToDept, tabs, x.msg ? note(x.msg.type, x.msg.text) : null, viewForecastList(), versionLine());
+  const d = x.data, m = x.sim, p = d.products.find(q => q.id === m.productId);
+  const c = planCalc(m, d.hourlyWage);
+  const set = (k, v) => { m[k] = v; if (k === 'made' && m.forecast > v) m.forecast = v; render(); };
+  const nameInput = h('input', { type: 'text', id: 'pl-name', value: m.name, maxlength: 30, autocomplete: 'off', placeholder: 'れい：みそパン',
+    style: 'font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid #333;border-radius:10px;width:14em;max-width:100%' });
+  nameInput.addEventListener('input', () => { m.name = nameInput.value.trim(); });
+  const hist = p && p.byChannel.length ? h('div', { style: 'overflow-x:auto' }, h('table', { class: 'tbl' },
+    h('thead', null, h('tr', null, h('th', null, 'はんばい'), h('th', { class: 'num' }, 'うった日'), h('th', { class: 'num' }, 'うれた かず'), h('th', { class: 'num' }, '1日あたり'))),
+    h('tbody', null, p.byChannel.map(r => h('tr', null, h('td', null, r.channel), h('td', { class: 'num' }, r.days + '日'), h('td', { class: 'num' }, r.qty + 'こ'), h('td', { class: 'num' }, r.perDay + 'こ')))))) : null;
+  const sug = suggestForecast(p, m.channel);
+  const line = (label, v, strong) => [h('dt', null, label), h('dd', null, strong ? h('b', null, yenNode(v)) : yenNode(v))];
+  const verdict = c.unitMargin <= 0
+    ? note('err', 'ねだんが ざいりょうひ より やすいので、うれば うるほど そんを します。ねだんを あげるか、ざいりょうひを さげましょう。')
+    : c.sold >= c.bep
+      ? h('p', { class: 'big', style: 'color:var(--ok)' }, '✓ よそうどおり うれれば くろじ（', yen(c.profit), '）')
+      : h('p', { class: 'big', style: 'color:var(--stop)' }, '▲ よそうどおり だと あかじ。くろじに するには あと ', c.bep - c.sold, 'こ うる ひつようが あります');
+  return page(title, backToDept, tabs,
+    x.msg ? note(x.msg.type, x.msg.text) : null,
+    h('p', { class: 'muted' }, 'ここで けいさん しても、うりあげや けっさんの きろくには はいりません。なんども ためして みましょう。'),
+    h('h2', null, '1. しょうひんを えらぶ'),
+    chips(d.products.map(q => [q.id, (q.icon ? q.icon + ' ' : '') + q.name]).concat([['', '＋ あたらしい しょうひん']]), m.productId, v => { pickPlanProduct(v); render(); }, '商品'),
+    m.productId === '' ? h('div', { class: 'field' }, h('label', { for: 'pl-name' }, 'しょうひんの なまえ'), nameInput) : null,
+    p ? [h('h3', null, 'これまでの うれかた'),
+      hist || h('p', { class: 'muted' }, 'まだ うった きろくが ありません。'),
+      h('p', null, 'つくった ', p.made, 'こ のうち ', p.sold, 'こ うれました', p.sellThrough !== null ? '（うれた わりあい ' + Math.round(p.sellThrough * 100) + '％）' : '', '。')] : null,
+    h('h2', null, '2. ねだんと かずを きめる'),
+    h('div', { class: 'counters' },
+      counter(['ねだん（1こ）'], m.price, v => set('price', v), { name: 'ねだん', min: 0, max: 100000, steps: [-50, -10, 10, 50], unit: '円' }),
+      counter([rb('材料費', 'ざいりょうひ'), '（1こ）'], m.cost, v => set('cost', v), { name: 'ざいりょうひ', min: 0, max: 100000, steps: [-10, -1, 1, 10], unit: '円' }),
+      counter('つくる かず', m.made, v => set('made', v), { name: 'つくる かず', min: 1, max: 9999, steps: [-10, -1, 1, 10] }),
+      counter(['うれる ', rb('予想', 'よそう')], m.forecast, v => set('forecast', v), { name: 'うれる よそう', min: 0, max: m.made, steps: [-10, -1, 1, 10] }),
+      sug !== null ? h('p', { class: 'muted', style: 'margin:0 0 8px' }, 'めやす：これまで 1日に やく ', sug, 'こ うれて います', m.channel ? '（' + m.channel + '）' : '', '。') : null,
+      counter(['はたらく じかん（みんなの ごうけい）'], m.minutes, v => set('minutes', v), { name: 'はたらく じかん', min: 0, max: 6000, steps: [-60, -10, 10, 60], unit: 'ふん' }),
+      counter(['そのほかの ', rb('経費', 'けいひ')], m.expenses, v => set('expenses', v), { name: 'けいひ', min: 0, max: 1000000, steps: [-100, 100, 1000], unit: '円' })),
+    h('h2', null, '3. けっか'),
+    h('div', { class: 'sum3' },
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, '1こ あたりの もうけ'), h('div', { class: 'money' }, yenNode(c.unitMargin)), h('small', { class: 'muted' }, 'ねだん － ざいりょうひ')),
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, rb('固定費', 'こていひ')), h('div', { class: 'money' }, yen(c.fixed)), h('small', { class: 'muted' }, 'じんけんひ ', yen(c.labor), ' ＋ けいひ ', yen(m.expenses))),
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, rb('損益分岐点', 'そんえきぶんきてん')), h('div', { class: 'money' }, c.bep === null ? '―' : c.bep + 'こ'), h('small', { class: 'muted' }, 'こていひ ÷ 1こ あたりの もうけ'))),
+    verdict,
+    h('div', { class: 'chart' }, bepChart(m, c)),
+    h('dl', { class: 'sum' },
+      line('うりあげ（' + m.price + '円 × ' + c.sold + 'こ）', c.sales),
+      line('－ ざいりょうひ（つくった ' + m.made + 'こ ぶん）', c.material),
+      line('－ じんけんひ（' + m.minutes + 'ふん × じきゅう ' + d.hourlyWage + '円）', c.labor),
+      m.expenses ? line('－ けいひ', m.expenses) : null,
+      line('＝ りえきの よそう', c.profit, true)),
+    c.leftover > 0 ? h('p', { class: 'muted' }, 'うれのこる よそう：', c.leftover, 'こ（ざいりょうひ ', yen(c.leftoverCost), ' が もうけを へらします）') : null,
+    h('h2', null, '4. よそうを のこす（うった あとで じっさいと くらべます）'),
+    viewForecastSave(),
+    versionLine());
+};
+function viewForecastSave() {
+  const x = S.pl, m = x.sim;
+  const date = h('input', { type: 'date', id: 'pl-date', value: m.saleDate });
+  date.addEventListener('change', () => { m.saleDate = date.value; });
+  const memo = h('textarea', { id: 'pl-memo', rows: 2, maxlength: 200, style: 'font:inherit;width:100%;max-width:36em;padding:8px;border:3px solid #333;border-radius:10px' }, m.memo);
+  memo.addEventListener('input', () => { m.memo = memo.value; });
+  const ready = m.saleDate && (m.productId || m.name);
+  return [
+    h('div', { class: 'field' }, h('label', { for: 'pl-date' }, 'うる 日'), date),
+    h('h3', null, 'どこで うる？'),
+    chips([['', 'きめない']].concat(channels().map(ch => [ch.name, ch.name])), m.channel, v => { m.channel = v; render(); }, 'はんばいの しゅるい'),
+    h('div', { class: 'field' }, h('label', { for: 'pl-memo' }, 'なぜ そう よそう した？'), memo),
+    actions(h('button', { class: 'btn ok big', disabled: !ready || x.sending, onclick: submitForecast }, x.sending ? 'おくって います…' : '✓ この よそうを のこす')),
+  ];
+}
+async function submitForecast() {
+  const x = S.pl, m = x.sim, c = planCalc(m, x.data.hourlyWage);
+  x.sending = true; x.msg = null; render();
+  try {
+    const res = await api('POST', 'note', { recordId: m.recordId, kind: '予想', productId: m.productId, item: m.name, saleDate: m.saleDate, channel: m.channel,
+      price: m.price, made: m.made, forecast: m.forecast, profit: c.profit, memo: m.memo, memberId: store.get('member', '') });
+    beep(true);
+    x.msg = { type: 'ok', text: '✓ よそうを のこしました' + (res.practice ? '（れんしゅう）' : '') + '。うった あとで「よそうと じっさい」で くらべましょう。' };
+    m.recordId = uuid();
+    x.tab = 'list'; x.sending = false;
+    await loadPlan();
+    return;
+  } catch (e) {
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    x.msg = { type: 'err', text: e.message }; beep(false);
+  }
+  x.sending = false; render();
+}
+function viewForecastList() {
+  const x = S.pl, list = x.data.forecasts;
+  if (!list.length) return h('p', { class: 'muted' }, 'まだ よそうは ありません。「けいさん して みる」で よそうを のこしましょう。');
+  return h('ul', { class: 'cards' }, list.map(f => {
+    const diff = f.actual === null ? null : f.actual - f.forecast;
+    const open = x.reflect && x.reflect.ref === f.recordId;
+    let reflectBox = null;
+    if (f.reflection) reflectBox = h('p', null, '📝 ふりかえり：', f.reflection.text);
+    else if (f.actual !== null && open) {
+      const ta = h('textarea', { rows: 3, maxlength: 300, 'aria-label': 'ふりかえり', style: 'font:inherit;width:100%;padding:8px;border:3px solid #333;border-radius:10px' }, x.reflect.text);
+      ta.addEventListener('input', () => { x.reflect.text = ta.value; });
+      reflectBox = [h('p', { class: 'muted' }, 'なぜ ちがった？ つぎは どうする？'), ta,
+        actions(h('button', { class: 'btn', onclick: () => { x.reflect = null; render(); } }, 'やめる'),
+          h('button', { class: 'btn ok', disabled: x.sending, onclick: submitReflection }, '✓ ふりかえりを のこす'))];
+    } else if (f.actual !== null) {
+      reflectBox = h('button', { class: 'btn', onclick: () => { x.reflect = { ref: f.recordId, text: '', id: uuid() }; render(); } }, '📝 ふりかえりを かく');
+    }
+    return h('li', { class: 'card' },
+      h('p', { class: 'big', style: 'margin:0' }, f.item, '　', h('small', { class: 'muted' }, f.saleDate, f.channel ? '・' + f.channel : '')),
+      h('dl', { class: 'sum' },
+        h('dt', null, 'ねだん'), h('dd', null, yen(f.price)),
+        h('dt', null, 'つくる かず'), h('dd', null, f.made, 'こ'),
+        h('dt', null, 'うれる よそう'), h('dd', null, h('b', null, f.forecast, 'こ')),
+        h('dt', null, 'じっさい'), h('dd', null, f.actual === null ? 'まだ（うる 日の あとで わかります）' : h('b', null, f.actual, 'こ')),
+        diff !== null ? [h('dt', null, 'ちがい'), h('dd', null, diff === 0 ? 'ぴったり！' : (diff > 0 ? 'よそうより ' + diff + 'こ おおく うれた' : 'よそうより ' + (-diff) + 'こ すくなかった'))] : null),
+      f.memo ? h('p', { class: 'muted' }, 'よそうの りゆう：', f.memo) : null,
+      f.memberName ? h('p', { class: 'muted' }, 'よそう した ひと：', f.memberName) : null,
+      reflectBox);
+  }));
+}
+async function submitReflection() {
+  const x = S.pl, r = x.reflect;
+  if (!r.text.trim()) { x.msg = { type: 'err', text: 'ふりかえりを かいて ください。' }; render(); return; }
+  x.sending = true; x.msg = null; render();
+  try {
+    await api('POST', 'note', { recordId: r.id, kind: 'ふりかえり', ref: r.ref, memo: r.text, memberId: store.get('member', '') });
+    beep(true);
+    x.msg = { type: 'ok', text: '✓ ふりかえりを のこしました。' };
+    x.reflect = null; x.sending = false;
+    await loadPlan();
+    return;
+  } catch (e) {
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    x.msg = { type: 'err', text: e.message }; beep(false);
+  }
+  x.sending = false; render();
+}
+/* =====================================================================
+ * 練習問題（部門ごと × 3レベル）。本番のデータは使わず、その場で数をつくる
+ * 1問 ＝ { type, text, answer, unit, hint, explain, neg }。answer は整数
+ * ===================================================================== */
+const DRILL_LEVELS = [[1, '★ かんたん'], [2, '★★ ふつう'], [3, '★★★ むずかしい']];
+const DRILL_NAMES = ['クッキー', 'ジャム', 'やさいセット', 'パン', 'コースター', 'ぶたまん', 'しおり'];
+function rint(a, b, step) { step = step || 1; return a + step * Math.floor(Math.random() * (Math.floor((b - a) / step) + 1)); }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function nf(v) { return Number(v).toLocaleString('ja-JP'); }
+function names(k) { const a = DRILL_NAMES.slice().sort(() => Math.random() - 0.5); return a.slice(0, k); }
+function lines(k, pmin, pmax, qmax) {
+  return names(k).map(n => ({ name: n, price: rint(pmin, pmax, 10), qty: rint(1, qmax) }));
+}
+function sumLines(ls) { return ls.reduce((a, l) => a + l.price * l.qty, 0); }
+function lineText(ls) { return ls.map(l => l.name + '（' + nf(l.price) + '円）を ' + l.qty + 'こ').join('、'); }
+
+const DRILL_GEN = {
+  /* ---------- 販売 ---------- */
+  change: { label: 'おつり', gen(lv) {
+    let total, text;
+    if (lv === 1) { const p = rint(50, 450, 10); total = p; text = nf(p) + '円の しょうひんを 1こ うりました。'; }
+    else { const ls = lines(lv === 2 ? 2 : 3, lv === 2 ? 100 : 120, lv === 2 ? 500 : 680, lv === 2 ? 3 : 4); total = sumLines(ls); text = lineText(ls) + ' うりました。'; }
+    let paid;
+    if (lv === 1) paid = total <= 500 && Math.random() < 0.5 ? 500 : 1000;
+    else if (lv === 2) paid = [1000, 2000, 5000, 10000].find(v => v > total);
+    else { paid = [5000, 10000].find(v => v > total) + (total % 100); }
+    return { text: text + 'おきゃくさんが ' + nf(paid) + '円 だしました。おつりは いくら？', answer: paid - total, unit: '円',
+      hint: lv === 1 ? 'だした おかね から ねだんを ひきます。' : 'まず ごうけいを だしてから、だした おかね から ひきます。',
+      explain: (lv === 1 ? '' : 'ごうけい ' + nf(total) + '円。') + 'おつり ＝ ' + nf(paid) + ' － ' + nf(total) + ' ＝ ' + nf(paid - total) + '円' +
+        (lv === 3 ? '。はしたの ' + nf(total % 100) + '円を いっしょに だすと、おつりの こぜにが へります。' : '') };
+  } },
+  total: { label: 'ごうけい', gen(lv) {
+    const ls = lv === 1 ? [{ name: names(1)[0], price: rint(50, 300, 10), qty: rint(2, 5) }] : lines(lv === 2 ? 2 : 3, 80, lv === 2 ? 400 : 650, lv === 2 ? 4 : 12);
+    const t = sumLines(ls);
+    return { text: lineText(ls) + ' かいます。ごうけいは いくら？', answer: t, unit: '円', hint: 'ねだん × こすう を しょうひん ごとに だして、たします。',
+      explain: ls.map(l => nf(l.price) + '×' + l.qty + '＝' + nf(l.price * l.qty)).join('、') + (ls.length > 1 ? '。ごうけい ' + nf(t) + '円' : '') };
+  } },
+  salesCheck: { label: 'こすうと うりあげ', gen(lv) {
+    const p = rint(100, 500, 10), q = rint(5, 40);
+    if (lv === 1) return { text: nf(p) + '円の しょうひんが ' + q + 'こ うれました。うりあげは いくら？', answer: p * q, unit: '円', hint: 'ねだん × うれた かず',
+      explain: nf(p) + ' × ' + q + ' ＝ ' + nf(p * q) + '円' };
+    if (lv === 2) return { text: nf(p) + '円の しょうひんの うりあげが ' + nf(p * q) + '円 でした。なんこ うれた？', answer: q, unit: 'こ', hint: 'うりあげ ÷ ねだん',
+      explain: nf(p * q) + ' ÷ ' + nf(p) + ' ＝ ' + q + 'こ' };
+    const p2 = rint(100, 400, 10), q2 = rint(3, 25);
+    const s = p * q + p2 * q2;
+    return { text: 'A（' + nf(p) + '円）と B（' + nf(p2) + '円）の うりあげの ごうけいは ' + nf(s) + '円。A は ' + q + 'こ うれました。B は なんこ うれた？', answer: q2, unit: 'こ',
+      hint: 'ごうけい から A の うりあげを ひくと、B の うりあげが わかります。', explain: '(' + nf(s) + ' － ' + nf(p) + '×' + q + ') ÷ ' + nf(p2) + ' ＝ ' + nf(p2 * q2) + ' ÷ ' + nf(p2) + ' ＝ ' + q2 + 'こ' };
+  } },
+  /* ---------- 会計・総務 ---------- */
+  expected: { label: 'ある はずの おかね', gen(lv) {
+    const f = pick([3000, 5000, 10000]), s = rint(2000, 30000, 10);
+    if (lv === 1) return { text: 'つりせん じゅんびきん ' + nf(f) + '円、うりあげ ' + nf(s) + '円。レジに ある はずの おかねは？', answer: f + s, unit: '円',
+      hint: 'さいしょに いれた おかね ＋ うりあげ', explain: nf(f) + ' ＋ ' + nf(s) + ' ＝ ' + nf(f + s) + '円' };
+    const r = rint(100, 600, 10);
+    if (lv === 2) return { text: 'つりせん じゅんびきん ' + nf(f) + '円、うりあげ ' + nf(s) + '円、とりけしで かえした おかね ' + nf(r) + '円。ある はずの おかねは？', answer: f + s - r, unit: '円',
+      hint: 'とりけしで かえした おかねは レジから へります。', explain: nf(f) + ' ＋ ' + nf(s) + ' － ' + nf(r) + ' ＝ ' + nf(f + s - r) + '円' };
+    const e = rint(100, 1500, 10);
+    return { text: 'つりせん じゅんびきん ' + nf(f) + '円、うりあげ ' + nf(s) + '円、とりけしの へんきん ' + nf(r) + '円、レジから はらった けいひ ' + nf(e) + '円。ある はずの おかねは？', answer: f + s - r - e, unit: '円',
+      hint: 'レジに はいった おかねは たし、でた おかねは ひきます。', explain: nf(f) + ' ＋ ' + nf(s) + ' － ' + nf(r) + ' － ' + nf(e) + ' ＝ ' + nf(f + s - r - e) + '円' };
+  } },
+  overShort: { label: 'かぶそく', gen(lv) {
+    const f = pick([3000, 5000]), s = rint(3000, 20000, 10);
+    const expected = f + s;
+    const d = pick([-1000, -500, -100, -50, -10, 10, 50, 100, 500]);
+    if (lv < 3) {
+      const actual = expected + d;
+      const given = lv === 1 ? 'レジに ある はずの おかね ' + nf(expected) + '円' : 'つりせん じゅんびきん ' + nf(f) + '円、うりあげ ' + nf(s) + '円';
+      return { text: given + '。かぞえたら ' + nf(actual) + '円 でした。かぶそくは いくら？（たりない ときは マイナス）', answer: d, unit: '円', neg: true,
+        hint: 'かぶそく ＝ かぞえた おかね － ある はずの おかね', explain: nf(actual) + ' － ' + nf(expected) + ' ＝ ' + (d > 0 ? '＋' : '') + nf(d) + '円（' + (d > 0 ? 'おおい' : 'たりない') + '）' };
+    }
+    // 金種ごとに数えた
+    let rest = expected + d;
+    const parts = [];
+    [10000, 5000, 1000, 500, 100, 50, 10].forEach(v => { const n = Math.floor(rest / v); if (n) { parts.push([v, n]); rest -= v * n; } });
+    const actual = expected + d - rest;
+    const diff = actual - expected;
+    return { text: 'つりせん ' + nf(f) + '円、うりあげ ' + nf(s) + '円。かぞえると ' + parts.map(p => nf(p[0]) + '円が ' + p[1] + 'まい').join('、') + ' でした。かぶそくは？（たりない ときは マイナス）', answer: diff, unit: '円', neg: true,
+      hint: 'まず かぞえた おかねの ごうけいを だします。', explain: 'かぞえた ' + nf(actual) + '円 － ある はず ' + nf(expected) + '円 ＝ ' + (diff > 0 ? '＋' : '') + nf(diff) + '円（' + (diff > 0 ? 'おおい' : 'たりない') + '）' };
+  } },
+  profit: { label: 'えいぎょうりえき', gen(lv) {
+    const sales = rint(5000, 40000, 100), mat = Math.round(sales * rint(25, 50) / 100 / 10) * 10;
+    if (lv === 1) return { text: 'うりあげ ' + nf(sales) + '円、ざいりょうひ ' + nf(mat) + '円。もうけ（うりあげ － ざいりょうひ）は？', answer: sales - mat, unit: '円', neg: true,
+      hint: 'うりあげ から ざいりょうひを ひきます。', explain: nf(sales) + ' － ' + nf(mat) + ' ＝ ' + nf(sales - mat) + '円' };
+    const exp = rint(0, 3000, 100);
+    let labor, laborText;
+    if (lv === 2) { labor = rint(2000, 20000, 100); laborText = 'じんけんひ ' + nf(labor) + '円'; }
+    else { const mins = rint(60, 900, 30); labor = mins / 60 * 1000; laborText = 'みんなで ' + mins + 'ふん はたらいた（じきゅう 1,000円）'; }
+    const op = sales - mat - labor - exp;
+    return { text: 'うりあげ ' + nf(sales) + '円、ざいりょうひ ' + nf(mat) + '円、' + laborText + '、けいひ ' + nf(exp) + '円。えいぎょうりえきは？（そんの ときは マイナス）', answer: op, unit: '円', neg: true,
+      hint: lv === 3 ? 'じんけんひ ＝ ふん ÷ 60 × じきゅう。それから ぜんぶ ひきます。' : 'うりあげ から かかった おかねを ぜんぶ ひきます。',
+      explain: (lv === 3 ? 'じんけんひ ' + nf(labor) + '円。' : '') + nf(sales) + ' － ' + nf(mat) + ' － ' + nf(labor) + ' － ' + nf(exp) + ' ＝ ' + nf(op) + '円' };
+  } },
+  /* ---------- 商品企画 ---------- */
+  margin: { label: '1こ の もうけ', gen(lv) {
+    const p = rint(100, 600, 10), c = Math.round(p * rint(20, 70) / 100 / 10) * 10;
+    if (lv === 1) return { text: 'ねだん ' + nf(p) + '円、ざいりょうひ 1こ ' + nf(c) + '円。1こ うると いくら もうかる？', answer: p - c, unit: '円', hint: 'ねだん － ざいりょうひ',
+      explain: nf(p) + ' － ' + nf(c) + ' ＝ ' + nf(p - c) + '円' };
+    const q = rint(10, 60);
+    if (lv === 2) return { text: 'ねだん ' + nf(p) + '円、ざいりょうひ 1こ ' + nf(c) + '円 の しょうひんが ' + q + 'こ うれました。ぜんぶで いくら もうかった？（げんかいりえき）', answer: (p - c) * q, unit: '円',
+      hint: '1こ の もうけ × うれた かず', explain: '(' + nf(p) + ' － ' + nf(c) + ') × ' + q + ' ＝ ' + nf((p - c) * q) + '円' };
+    const rate = Math.floor(((p - c) * 200 + p) / (2 * p));   // 四捨五入を整数で
+    return { text: 'ねだん ' + nf(p) + '円、ざいりょうひ ' + nf(c) + '円。げんかいりえきりつ（うりあげの なんパーセントが もうけか）は？（しょうすうは ししゃごにゅう）', answer: rate, unit: '％',
+      hint: '(ねだん － ざいりょうひ) ÷ ねだん × 100', explain: '(' + nf(p) + ' － ' + nf(c) + ') ÷ ' + nf(p) + ' × 100 ＝ ' + ((p - c) / p * 100).toFixed(1) + ' → ' + rate + '％' };
+  } },
+  bep: { label: 'そんえきぶんきてん', gen(lv) {
+    let m, fixed, pre = '';
+    if (lv === 1) { m = rint(50, 200, 10); const k = rint(10, 60); fixed = m * k; }
+    else if (lv === 2) { m = rint(40, 250, 10); fixed = rint(2000, 15000, 100); if (fixed % m === 0) fixed += 10; }
+    else {
+      const p = rint(150, 600, 10), c = Math.round(p * rint(25, 60) / 100 / 10) * 10; m = p - c;
+      const mins = rint(120, 900, 30), ex = rint(0, 3000, 100); fixed = mins / 60 * 1000 + ex;
+      pre = 'ねだん ' + nf(p) + '円、ざいりょうひ 1こ ' + nf(c) + '円。みんなで ' + mins + 'ふん はたらき（じきゅう 1,000円）、けいひが ' + nf(ex) + '円。';
+    }
+    const ans = Math.ceil(fixed / m);
+    const text = lv === 3 ? pre + 'そんを しない ためには、さいてい なんこ うれば よい？'
+      : 'こていひが ' + nf(fixed) + '円、1こ の もうけが ' + nf(m) + '円。' + (lv === 1 ? 'なんこ うると、もうけが こていひと おなじに なる？' : 'そんを しない ためには、さいてい なんこ うれば よい？');
+    return { text: text, answer: ans, unit: 'こ', hint: 'こていひ ÷ 1こ の もうけ。' + (lv > 1 ? 'わりきれない ときは きりあげ。' : ''),
+      explain: (lv === 3 ? '1こ の もうけ ' + nf(m) + '円、こていひ ' + nf(fixed) + '円。' : '') + nf(fixed) + ' ÷ ' + nf(m) + ' ＝ ' + (fixed / m).toFixed(fixed % m ? 2 : 0) + (fixed % m ? ' → きりあげて ' : ' → ') + ans + 'こ' };
+  } },
+  targetQty: { label: 'もくひょうの かず', gen(lv) {
+    const m = rint(50, 200, 10);
+    if (lv === 1) { const k = rint(5, 50); return { text: '1こ の もうけが ' + nf(m) + '円。' + nf(m * k) + '円 もうけたい。なんこ うれば よい？', answer: k, unit: 'こ',
+      hint: 'もうけたい きんがく ÷ 1こ の もうけ', explain: nf(m * k) + ' ÷ ' + nf(m) + ' ＝ ' + k + 'こ' }; }
+    const fixed = rint(2000, 10000, 100), target = rint(1000, 10000, 500);
+    const ans = Math.ceil((fixed + target) / m);
+    return { text: 'こていひ ' + nf(fixed) + '円、1こ の もうけ ' + nf(m) + '円。りえきを ' + nf(target) + '円 だしたい。さいてい なんこ うれば よい？', answer: ans, unit: 'こ',
+      hint: '(こていひ ＋ だしたい りえき) ÷ 1こ の もうけ。わりきれない ときは きりあげ。', explain: '(' + nf(fixed) + ' ＋ ' + nf(target) + ') ÷ ' + nf(m) + ' → ' + ans + 'こ' };
+  } },
+  /* ---------- 生産 ---------- */
+  canMake: { label: 'なんこ つくれる', gen(lv) {
+    const per = rint(15, 60, 5);
+    if (lv < 3) {
+      const total = lv === 1 ? per * rint(5, 40) : rint(500, 3000, 50);
+      const ans = Math.floor(total / per);
+      return { text: 'こむぎこが ' + nf(total) + 'g あります。1こ つくるのに ' + per + 'g つかいます。なんこ つくれる？', answer: ans, unit: 'こ',
+        hint: lv === 1 ? 'ぜんぶの りょう ÷ 1こ ぶん' : 'あまりは つかえないので きりすて。', explain: nf(total) + ' ÷ ' + per + ' ＝ ' + (total / per).toFixed(total % per ? 2 : 0) + (total % per ? ' → きりすてて ' : ' → ') + ans + 'こ' };
+    }
+    const per2 = rint(5, 30, 5), a = rint(800, 3000, 50), b = rint(200, 1000, 10);
+    const na = Math.floor(a / per), nb = Math.floor(b / per2), ans = Math.min(na, nb);
+    return { text: 'こむぎこ ' + nf(a) + 'g と さとう ' + nf(b) + 'g が あります。1こに こむぎこ ' + per + 'g、さとう ' + per2 + 'g つかいます。なんこ つくれる？', answer: ans, unit: 'こ',
+      hint: 'ざいりょう ごとに なんこ ぶん あるか だして、すくない ほうに あわせます。', explain: 'こむぎこ ' + na + 'こ ぶん、さとう ' + nb + 'こ ぶん → すくない ほうの ' + ans + 'こ' };
+  } },
+  workTime: { label: 'さぎょう じかん', gen(lv) {
+    const per = rint(2, 8), q = rint(10, 60);
+    if (lv === 1) return { text: '1こ つくるのに ' + per + 'ふん かかります。' + q + 'こ つくると なんぷん？', answer: per * q, unit: 'ふん', hint: '1こ の じかん × こすう', explain: per + ' × ' + q + ' ＝ ' + per * q + 'ふん' };
+    const ppl = pick([2, 3, 4, 5]);
+    const q2 = ppl * rint(3, 15);
+    if (lv === 2) return { text: '1こ ' + per + 'ふん かかる しごとを、' + ppl + 'にんで わけて ' + q2 + 'こ つくります。なんぷん で おわる？', answer: per * q2 / ppl, unit: 'ふん',
+      hint: 'ひとり ぶんの こすうを だします。', explain: q2 + ' ÷ ' + ppl + ' ＝ ' + q2 / ppl + 'こ（ひとり ぶん）。' + q2 / ppl + ' × ' + per + ' ＝ ' + per * q2 / ppl + 'ふん' };
+    const setup = rint(10, 30, 5);
+    return { text: 'じゅんびに ' + setup + 'ふん、そのあと 1こ ' + per + 'ふん で ' + q2 + 'こ を ' + ppl + 'にんで わけて つくります（じゅんびは いっしょに する）。ぜんぶで なんぷん？', answer: setup + per * q2 / ppl, unit: 'ふん',
+      hint: 'じゅんびの じかん ＋ ひとり ぶんの じかん', explain: setup + ' ＋ ' + q2 / ppl + 'こ × ' + per + 'ふん ＝ ' + (setup + per * q2 / ppl) + 'ふん' };
+  } },
+  goodRate: { label: 'できた かず', gen(lv) {
+    if (lv === 1) { const m = rint(20, 80), l = rint(1, 8); return { text: m + 'こ つくって、' + l + 'こ しっぱい しました。うれる しょうひんは なんこ？', answer: m - l, unit: 'こ',
+      hint: 'つくった かず － しっぱい', explain: m + ' － ' + l + ' ＝ ' + (m - l) + 'こ' }; }
+    if (lv === 2) { const m = pick([20, 25, 50]), l = rint(1, m / 5); const r = (m - l) / m * 100; return { text: m + 'こ つくって ' + l + 'こ しっぱい。ぶどまり（うまく できた わりあい）は なん％？', answer: r, unit: '％',
+      hint: 'うまく できた かず ÷ つくった かず × 100', explain: (m - l) + ' ÷ ' + m + ' × 100 ＝ ' + r + '％' }; }
+    const need = rint(20, 80), loss = pick([5, 10, 20]);
+    const ans = Math.ceil(need * 100 / (100 - loss));   // 整数で計算（小数の誤差を避ける）
+    return { text: 'いつも ' + loss + '％ しっぱい します。うれる しょうひんを ' + need + 'こ そろえるには、さいてい なんこ つくれば よい？', answer: ans, unit: 'こ',
+      hint: 'うまく できる わりあいは ' + (100 - loss) + '％。ひつような かず ÷ ' + (100 - loss) / 100 + '。きりあげ。', explain: need + ' ÷ ' + (100 - loss) / 100 + ' ＝ ' + ((need * 100) % (100 - loss) ? (need / (1 - loss / 100)).toFixed(2) + ' → きりあげて ' : '') + ans + 'こ' };
+  } },
+  /* ---------- 仕入・在庫 ---------- */
+  stock: { label: 'ざいこ', gen(lv) {
+    const made = rint(30, 120), sold = rint(5, made - 5);
+    if (lv === 1) return { text: made + 'こ つくって、' + sold + 'こ うれました。のこりは なんこ？', answer: made - sold, unit: 'こ', hint: 'つくった かず － うれた かず', explain: made + ' － ' + sold + ' ＝ ' + (made - sold) + 'こ' };
+    const loss = rint(1, Math.max(1, Math.min(6, made - sold - 1)));
+    if (lv === 2) return { text: made + 'こ つくって、' + sold + 'こ うれて、' + loss + 'こ こわれました。ざいこは なんこ？', answer: made - sold - loss, unit: 'こ',
+      hint: 'つくった かず から うれた かずと こわれた かずを ひきます。', explain: made + ' － ' + sold + ' － ' + loss + ' ＝ ' + (made - sold - loss) + 'こ' };
+    const prev = rint(0, 30);
+    const ans = prev + made - sold - loss;
+    return { text: 'まえの ひの ざいこ ' + prev + 'こ。きょう ' + made + 'こ つくり、' + sold + 'こ うれて、' + loss + 'こ こわれました。きょうの おわりの ざいこは？', answer: ans, unit: 'こ',
+      hint: 'まえの ざいこ ＋ つくった － うれた － こわれた', explain: prev + ' ＋ ' + made + ' － ' + sold + ' － ' + loss + ' ＝ ' + ans + 'こ' };
+  } },
+  need: { label: 'ひつような ざいりょう', gen(lv) {
+    const per = rint(10, 60, 5), q = rint(10, 80);
+    if (lv === 1) return { text: '1こに さとうを ' + per + 'g つかいます。' + q + 'こ つくるには なんg いる？', answer: per * q, unit: 'g', hint: '1こ ぶん × こすう', explain: per + ' × ' + q + ' ＝ ' + nf(per * q) + 'g' };
+    const have = rint(50, Math.max(60, per * q - 50), 10);
+    const ans = per * q - have;
+    if (lv === 2) return { text: '1こに さとう ' + per + 'g、' + q + 'こ つくります。さとうは いま ' + nf(have) + 'g あります。あと なんg かえば よい？', answer: ans, unit: 'g',
+      hint: 'ひつような りょう － いま ある りょう', explain: per + ' × ' + q + ' ＝ ' + nf(per * q) + 'g。' + nf(per * q) + ' － ' + nf(have) + ' ＝ ' + nf(ans) + 'g' };
+    const price = rint(150, 400, 10), bag = pick([500, 1000]);
+    const bags = Math.ceil(ans / bag);
+    return { text: '1こに さとう ' + per + 'g、' + q + 'こ つくります。いま ' + nf(have) + 'g あります。さとうは ' + nf(bag) + 'g いり ' + nf(price) + '円 の ふくろで かいます。いくら かかる？', answer: bags * price, unit: '円',
+      hint: 'たりない りょう → なんふくろ（きりあげ）→ ねだん', explain: 'たりない ' + nf(ans) + 'g → ' + bags + 'ふくろ × ' + nf(price) + '円 ＝ ' + nf(bags * price) + '円' };
+  } },
+  packs: { label: 'なんふくろ', gen(lv) {
+    const bag = pick([200, 250, 500, 1000]);
+    const needG = lv === 1 ? bag * rint(2, 8) : rint(bag + 10, bag * 8, 10);
+    const ans = Math.ceil(needG / bag);
+    return { text: 'こむぎこが ' + nf(needG) + 'g いります。' + nf(bag) + 'g いりの ふくろを なんふくろ かえば よい？', answer: ans, unit: 'ふくろ',
+      hint: lv === 1 ? 'いる りょう ÷ 1ふくろ' : 'たりないと こまるので きりあげ。', explain: nf(needG) + ' ÷ ' + nf(bag) + ' ＝ ' + (needG / bag).toFixed(needG % bag ? 2 : 0) + (needG % bag ? ' → きりあげて ' : ' → ') + ans + 'ふくろ' };
+  } },
+  /* ---------- 経営 ---------- */
+  labor: { label: 'じんけんひ', gen(lv) {
+    const w = pick([900, 1000, 1200]);
+    if (lv === 1) { const hr = rint(1, 8); return { text: 'じきゅう ' + nf(w) + '円 で ' + hr + 'じかん はたらきました。じんけんひは？', answer: w * hr, unit: '円', hint: 'じきゅう × じかん', explain: nf(w) + ' × ' + hr + ' ＝ ' + nf(w * hr) + '円' }; }
+    if (lv === 2) { const m = rint(30, 300, 30); return { text: 'じきゅう ' + nf(w) + '円 で ' + m + 'ふん はたらきました。じんけんひは？', answer: m / 60 * w, unit: '円',
+      hint: 'ふん ÷ 60 で じかんに なおします。', explain: m + ' ÷ 60 × ' + nf(w) + ' ＝ ' + nf(m / 60 * w) + '円' }; }
+    const ms = [rint(30, 240, 6), rint(30, 240, 6), rint(30, 240, 6)];
+    const total = ms.reduce((a, m) => a + m, 0);
+    return { text: '3にんが ' + ms.join('ふん、') + 'ふん はたらきました（じきゅう 1,000円）。じんけんひの ごうけいは？', answer: total / 60 * 1000, unit: '円',
+      hint: 'じかんを たしてから ÷ 60 × じきゅう', explain: total + 'ふん ÷ 60 × 1,000 ＝ ' + nf(total / 60 * 1000) + '円' };
+  } },
+};
+const DRILL_SETS = {
+  '販売': ['change', 'total', 'salesCheck'],
+  '会計・総務': ['expected', 'overShort', 'profit'],
+  '商品企画': ['margin', 'bep', 'targetQty'],
+  '生産': ['canMake', 'workTime', 'goodRate'],
+  '仕入・在庫': ['stock', 'need', 'packs'],
+  '経営': ['profit', 'bep', 'labor', 'margin'],
+};
+function makeDrill(dept, level, count) {
+  const types = DRILL_SETS[dept] || DRILL_SETS['販売'];
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const key = types[i % types.length];
+    const q = DRILL_GEN[key].gen(level);
+    out.push(Object.assign({ key: key, type: DRILL_GEN[key].label, level: level }, q));
+  }
+  return out.sort(() => Math.random() - 0.5);
+}
+/* ---------- 練習問題の画面（時間制限なし。2回まちがえたら こたえを見られる） ---------- */
+function openDrill(dept) {
+  const d = DRILL_SETS[dept] ? dept : '販売';
+  S.dr = { phase: 'setup', dept: d, level: settings().level || 1, count: 5, member: store.get('member', '') || '', msg: null };
+  go('drill');
+}
+function startDrill() {
+  const x = S.dr;
+  x.qs = makeDrill(x.dept, x.level, x.count);
+  x.i = 0; x.input = ''; x.tries = 0; x.state = 'ask'; x.results = []; x.showHint = false; x.recordId = uuid(); x.sent = null;
+  x.phase = 'q';
+  render();
+}
+function drillKey(k) {
+  const x = S.dr;
+  if (x.state !== 'ask' && x.state !== 'wrong') return;
+  if (k === 'back') x.input = x.input.slice(0, -1);
+  else if (k === 'clear') x.input = '';
+  else if (k === '-') x.input = x.input.startsWith('-') ? x.input.slice(1) : '-' + x.input;
+  else if (x.input.replace('-', '').length < 9) x.input = (x.input === '0' ? '' : x.input === '-0' ? '-' : x.input) + k;
+  if (x.state === 'wrong') x.state = 'ask';
+  render();
+}
+function drillAnswer() {
+  const x = S.dr, q = x.qs[x.i];
+  if (x.input === '' || x.input === '-') return;
+  x.tries += 1;
+  if (Number(x.input) === q.answer) {
+    x.state = 'right'; beep(true);
+    x.results.push({ type: q.type, level: q.level, correct: true, tries: x.tries });
+  } else {
+    x.state = 'wrong'; beep(false);
+  }
+  render();
+}
+function drillReveal() {
+  const x = S.dr, q = x.qs[x.i];
+  x.state = 'shown';
+  x.results.push({ type: q.type, level: q.level, correct: false, tries: x.tries });
+  render();
+}
+function drillNext() {
+  const x = S.dr;
+  if (x.i + 1 >= x.qs.length) { x.phase = 'done'; render(); sendDrill(); return; }
+  x.i += 1; x.input = ''; x.tries = 0; x.state = 'ask'; x.showHint = false;
+  render();
+}
+async function sendDrill() {
+  const x = S.dr;
+  try {
+    await api('POST', 'drill', { recordId: x.recordId, dept: x.dept, memberId: x.member, results: x.results });
+    x.sent = 'ok';
+  } catch (e) { x.sent = 'ng'; }
+  if (S.screen === 'drill') render();
+}
+VIEWS.drill = () => {
+  const x = S.dr;
+  const title = '✏ れんしゅう もんだい';
+  if (x.phase === 'setup') {
+    const members = S.init.members;
+    return page(title, backToDept,
+      h('p', { class: 'muted' }, 'ほんばんの きろくは つかいません。じかんの せいげんは ありません。'),
+      h('h2', null, 'どの ', rb('部門', 'ぶもん'), 'の もんだい？'),
+      chips(Object.keys(DRILL_SETS).map(d => [d, d]), x.dept, v => { x.dept = v; render(); }, '部門'),
+      h('p', { class: 'muted' }, 'でる もんだい：', DRILL_SETS[x.dept].map(k => DRILL_GEN[k].label).join('・')),
+      h('h2', null, 'レベル'),
+      chips(DRILL_LEVELS, x.level, v => { x.level = v; render(); }, 'レベル'),
+      h('h2', null, 'もんだいの かず'),
+      chips([[5, '5もん'], [10, '10もん']], x.count, v => { x.count = v; render(); }, 'もんだいの かず'),
+      h('h2', null, 'だれが やる？（えらばなくても よい）'),
+      chips([['', 'えらばない']].concat(members.map(m => [m.id, m.name])), x.member, v => { x.member = v; render(); }, 'なまえ'),
+      actions(h('button', { class: 'btn go big', onclick: startDrill }, 'はじめる ▶')),
+      versionLine());
+  }
+  if (x.phase === 'done') {
+    const ok = x.results.filter(r => r.correct).length;
+    return page(title, backToDept,
+      h('div', { class: 'done-box', role: 'status' },
+        h('p', { class: 'big' }, x.qs.length, 'もんの うち ', h('b', null, ok, 'もん'), ' せいかい！'),
+        h('ul', { class: 'list', style: 'text-align:left' }, x.qs.map((q, i) => {
+          const r = x.results[i];
+          return h('li', null, r.correct ? '✓ ' : '△ ', i + 1, '. ', q.type, '：', nf(q.answer), q.unit, r.correct ? (r.tries > 1 ? '（' + r.tries + 'かいめで せいかい）' : '') : '（こたえを みた）');
+        })),
+        x.sent === 'ok' ? h('p', { class: 'muted' }, 'けっかを きろく しました。') : x.sent === 'ng' ? h('p', { class: 'muted' }, 'けっかは きろく できませんでしたが、れんしゅうは できています。') : null),
+      actions(
+        h('button', { class: 'btn', onclick: () => { x.phase = 'setup'; render(); } }, 'レベルを かえる'),
+        h('button', { class: 'btn go big', onclick: startDrill }, '🔄 もういちど')),
+      versionLine());
+  }
+  const q = x.qs[x.i];
+  const keys = ['7', '8', '9', '4', '5', '6', '1', '2', '3', q.neg ? '-' : 'clear', '0', 'back'];
+  const keyLabel = { back: '⌫', clear: 'けす', '-': '－（マイナス）' };
+  const locked = x.state === 'right' || x.state === 'shown';
+  return page(title, () => { x.phase = 'setup'; render(); },
+    h('p', { class: 'muted' }, x.i + 1, ' / ', x.qs.length, 'もん　', DRILL_LEVELS[x.level - 1][1], '　', q.type),
+    h('p', { class: 'drill-q' }, q.text),
+    h('div', { class: 'drill-ans', 'aria-live': 'polite' }, h('span', { class: 'v' }, x.state === 'shown' ? nf(q.answer) : (x.input === '' ? '　' : x.input.replace(/^-/, '－'))), h('span', null, q.unit)),
+    x.state === 'wrong' ? note('err', '✖ ちがいます。もういちど かんがえて みよう。') : null,
+    x.state === 'right' ? note('ok', '✓ せいかい！') : null,
+    x.state === 'shown' ? note('', 'こたえは ' + nf(q.answer) + q.unit + ' です。') : null,
+    (x.showHint || x.tries > 0) && !locked ? note('', '💡 ' + q.hint) : null,
+    locked ? h('p', { class: 'drill-exp' }, '📖 ', q.explain) : null,
+    !locked ? h('div', { class: 'keypad', role: 'group', 'aria-label': 'すうじ' }, keys.map(k => h('button', { class: 'btn', onclick: () => drillKey(k), 'aria-label': keyLabel[k] || k }, keyLabel[k] || k))) : null,
+    h('div', { class: 'actions static' },
+      !locked && !x.showHint && x.tries === 0 ? h('button', { class: 'btn', onclick: () => { x.showHint = true; render(); } }, '💡 ヒント') : null,
+      !locked && x.tries >= 2 ? h('button', { class: 'btn', onclick: drillReveal }, 'こたえを みる') : null,
+      !locked ? h('button', { class: 'btn ok big', disabled: x.input === '' || x.input === '-', onclick: drillAnswer }, 'こたえる') : null,
+      locked ? h('button', { class: 'btn go big', onclick: drillNext }, x.i + 1 >= x.qs.length ? 'けっかを みる ▶' : 'つぎの もんだい ▶') : null));
+};
 </script>
 </body>
 </html>
