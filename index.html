@@ -6,6 +6,8 @@
 <title>販売・決算DX</title>
 <!-- QRコード読み取り（バージョン固定）。読み込めなくても商品ボタンで販売できます -->
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" async></script>
+<!-- 値札の二次元コード作成（バージョン固定） -->
+<script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js" async></script>
 <style>
 :root {
   --fg: #1a1a1a; --bg: #f6f6f3; --card: #ffffff; --line: #b9b9b9; --muted: #4a4a4a;
@@ -148,11 +150,68 @@ h3 { font-size: 1rem; margin: 12px 0 8px; }
 .badge { display: inline-block; padding: 2px 10px; border-radius: 8px; font-weight: 800; border: 2px solid currentColor; margin-top: 4px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- フェーズ2で追加 ---------- */
+.btn.danger { background: var(--stop); border-color: var(--stop); color: #fff; }
+.chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.chips .btn { min-width: 110px; }
+.counter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #fff; border: 2px solid var(--line); border-radius: 12px; padding: 10px 14px; margin: 10px 0; }
+.counter .k { font-weight: 800; min-width: 9em; }
+.counter .v { font-size: 2rem; font-weight: 800; min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.meter { height: 12px; background: #e4e4e4; border-radius: 6px; overflow: hidden; margin-top: 4px; width: 100%; }
+.meter > i { display: block; height: 100%; background: var(--ok); }
+.list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.list .btn { width: 100%; justify-content: flex-start; text-align: left; flex-wrap: wrap; }
+.tag-voided { color: var(--stop); font-weight: 800; }
+table.tbl { width: 100%; border-collapse: collapse; background: #fff; }
+table.tbl th, table.tbl td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+table.tbl td.num, table.tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.tbl thead th { background: #eef0f2; }
+.pin { font: inherit; font-size: 1.6rem; letter-spacing: 0.3em; width: 9em; padding: 8px 12px; border: 3px solid #333; border-radius: 10px; }
+.field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.field label { min-width: 8em; font-weight: 700; }
+.field input[type=number], .field input[type=date] { font: inherit; width: 6.5em; padding: 6px 8px; border: 2px solid #333; border-radius: 8px; }
+.denoms { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 8px; }
+.denom { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; background: #fff; border: 2px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+.denom > * { white-space: nowrap; }
+.denom .k { min-width: 6.5em; font-weight: 800; }
+.denom input { font: inherit; width: 3.6em; padding: 4px 6px; border: 2px solid #333; border-radius: 8px; text-align: right; }
+.denom .amt { margin-left: auto; }
+.panel { background: #fff; border: 2px solid var(--line); border-radius: 12px; padding: 10px 16px; margin: 14px 0; }
+.panel h3 { margin-top: 4px; }
+.timer { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: #fff; border: 2px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+.slots { display: inline-grid; gap: 3px; margin: 6px 0; }
+.slots .btn { min-height: 40px; min-width: 44px; padding: 2px 6px; font-size: 0.8rem; }
+
+/* 印刷（値札ラベル・手書き用紙） */
+#print-area { display: none; }
+.preview { border: 2px solid var(--line); background: #ddd; overflow: hidden; margin: 8px 0; }
+.preview .sheet { transform-origin: 0 0; box-shadow: 0 0 0 1px #999; }
+.sheet { position: relative; width: 210mm; height: 297mm; overflow: hidden; background: #fff; color: #000; break-after: page; page-break-after: always; }
+.sheet:last-child { break-after: auto; page-break-after: auto; }
+.lbl { position: absolute; box-sizing: border-box; display: flex; align-items: center; gap: 1.2mm; padding: 1.2mm; overflow: hidden; color: #000;
+  font-family: "BIZ UDPGothic", "Hiragino Sans", "Meiryo", sans-serif; }
+.lbl.frame { outline: 0.25mm dashed #555; outline-offset: -0.125mm; }
+.lbl .qr { flex: none; display: block; }
+.lbl .t { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.15; }
+.lbl .t > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lbl .i { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.paper { box-sizing: border-box; padding: 12mm; font-family: "BIZ UDPGothic", "Hiragino Sans", "Meiryo", sans-serif; font-size: 10pt; }
+.paper h1 { font-size: 14pt; text-align: left; margin: 0 0 3mm; }
+.paper table { width: 100%; border-collapse: collapse; }
+.paper th, .paper td { border: 0.3mm solid #000; padding: 1.5mm; height: 7.5mm; }
+@media print {
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  body > *:not(#print-area) { display: none !important; }
+  #print-area { display: block !important; }
+}
 </style>
+<style id="page-style"></style>
 </head>
 <body>
 <div id="banner" hidden></div>
 <div id="app"></div>
+<div id="print-area"></div>
 <noscript><p class="note err">JavaScript を有効にしてください。</p></noscript>
 
 <script>
@@ -162,7 +221,7 @@ h3 { font-size: 1rem; margin: 12px 0 8px; }
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1wik8mNABw63NCTB69y0wofilZZLcUTfL3NXKCduYIiakRyoBKt9ADdERuRAE3w4/exec';
 /* ============================ */
 
-const APP_VERSION = '1.0.0-phase1';
+const APP_VERSION = '2.0.0-phase2';
 const TIMEOUT_MS = 15000;
 
 /* ---------- 保存（使えない端末でも止まらないように） ---------- */
@@ -189,11 +248,14 @@ const S = {
   deviceId: store.get('deviceId', '') || (() => { const id = 'D-' + uuid().slice(0, 8); store.set('deviceId', id); return id; })(),
   prefs: Object.assign({ furigana: true, fs: 'm', sound: true }, store.get('prefs', {})),
   prefsOpen: false,
-  init: null,   // サーバーの init 応答
-  dept: null,   // 選んだ部門
-  msg: null,    // 店舗コード画面・エラー画面のメッセージ
-  reg: null,    // レジの状態
-  dash: null,   // 決算の状態
+  init: null,          // サーバーの init 応答（端末にも保存し、つながらないときに使う）
+  sold: new Set(),     // 販売済みの値札（個体ID）
+  offline: false,      // 前回のデータで動いているか
+  queue: store.get('queue', []),     // 未送信の決済
+  timers: store.get('timers', []),   // この端末で動いているタイムカード
+  adminPin: null,      // 管理者の暗証番号（画面を閉じるまで覚える）
+  dept: null, msg: null,
+  reg: null, dash: null, pd: null, lab: null, labList: null, tc: null, vd: null, sales: null, day: null, cl: null, adm: null,
 };
 const REF = { step2: null };
 
@@ -221,10 +283,56 @@ function rb(base, reading) { return h('ruby', null, base, h('rt', null, reading)
 function yen(n) { const v = Math.round(n || 0); return (v < 0 ? '▲' : '') + Math.abs(v).toLocaleString('ja-JP') + '円'; }
 function yenNode(n) { return h('span', { class: n < 0 ? 'neg' : null }, yen(n)); }
 function backBtn(fn, disabled) { return h('button', { class: 'btn stop', onclick: fn, disabled: !!disabled }, '◀ もどる'); }
-function versionLine() { return h('p', { class: 'ver' }, '画面 ' + APP_VERSION + ' ／ サーバー ' + ((S.init && S.init.version) || '―')); }
+function versionLine() { return h('p', { class: 'ver' }, '画面 ' + APP_VERSION + ' ／ サーバー ' + ((S.init && S.init.version) || '―') + ' ／ たんまつ ' + S.deviceId); }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function prod(id) { return S.init.products.find(p => p.id === id); }
-function memberName(id) { const m = S.init.members.find(x => x.id === id); return m ? m.name : ''; }
+function memberName(id) { const m = S.init.members.find(x => x.id === id); return m ? m.name : id; }
+function settings() { return S.init.settings; }
+function canOversell() { return settings().allowOversell || settings().practiceMode; }
+function note(type, text) { return h('p', { class: 'note ' + type, role: type === 'err' ? 'alert' : 'status' }, text); }
+/** 画面の共通の枠：見出し・もどる・本文 */
+function page(title, onBack, ...kids) {
+  return h('div', { class: 'screen' },
+    h('header', { class: 'bar' }, onBack ? backBtn(onBack) : h('span'), h('h1', null, title), h('span')),
+    ...kids);
+}
+function actions(...kids) { return h('div', { class: 'actions' }, ...kids); }
+/** えらぶボタンの並び（選んだものに ✓ と太い枠） */
+function chips(options, current, onPick, label) {
+  return h('div', { class: 'chips', role: 'group', 'aria-label': label || null },
+    options.map(([value, text]) => h('button', {
+      class: 'btn' + (current === value ? ' selected' : ''), 'aria-pressed': String(current === value), onclick: () => onPick(value),
+    }, current === value ? '✓ ' : '', text)));
+}
+/** ＋－ボタンで数を入れる */
+function counter(label, value, onChange, opts) {
+  const o = Object.assign({ min: 0, max: 999, steps: [-10, -1, 1, 10], unit: 'こ' }, opts || {});
+  const set = v => onChange(Math.max(o.min, Math.min(o.max, v)));
+  return h('div', { class: 'counter', role: 'group', 'aria-label': o.name || (typeof label === 'string' ? label : null) },
+    h('span', { class: 'k' }, label),
+    o.steps.filter(s => s < 0).map(s => h('button', { class: 'btn sm', onclick: () => set(value + s), disabled: value <= o.min, 'aria-label': (-s) + ' へらす' }, '－' + (-s))),
+    h('span', { class: 'v', 'aria-live': 'polite' }, value, h('small', null, o.unit)),
+    o.steps.filter(s => s > 0).map(s => h('button', { class: 'btn sm', onclick: () => set(value + s), disabled: value >= o.max, 'aria-label': s + ' ふやす' }, '＋' + s)));
+}
+/** ステップの進行表示 */
+function progressBar(labels, step) {
+  return h('ol', { class: 'progress', 'aria-label': 'すすみぐあい' }, labels.map((label, i) => {
+    const n = i + 1;
+    return h('li', { class: n < step ? 'done' : null, 'aria-current': n === step ? 'step' : null },
+      n < step ? '✓ ' : n === step ? '▶ ' : '', n, ' ', typeof label === 'function' ? label() : label);
+  }));
+}
+const DENOM_ALL = [10000, 5000, 2000, 1000, 500, 100, 50, 10, 5, 1];
+function breakdown(n) {
+  const out = [];
+  let rest = n;
+  DENOM_ALL.filter(v => v !== 2000).forEach(v => { const c = Math.floor(rest / v); if (c > 0) { out.push([v, c]); rest -= c * v; } });
+  return out;
+}
+function coinList(n) {
+  return h('ul', { class: 'coins', 'aria-label': 'わたす おかね' },
+    breakdown(n).map(([v, c]) => h('li', null, v >= 1000 ? '💴 ' : '🪙 ', v.toLocaleString('ja-JP'), '円 × ', c, 'まい')));
+}
 
 /* ---------- 表示の設定 ---------- */
 function applyPrefs() {
@@ -261,7 +369,7 @@ async function api(method, action, payload) {
   try {
     let res;
     if (method === 'GET') {
-      const q = new URLSearchParams(Object.assign({ action: action, storeCode: S.storeCode }, payload || {}));
+      const q = new URLSearchParams(Object.assign({ action: action, storeCode: S.storeCode, deviceId: S.deviceId }, payload || {}));
       res = await fetch(GAS_URL + '?' + q.toString(), { signal: ctrl.signal });
     } else {
       // text/plain で送ると、ブラウザの事前確認（プリフライト）が起きない
@@ -274,6 +382,7 @@ async function api(method, action, payload) {
     }
     const json = await res.json();
     if (!json.ok) throw appError(json.error.code, json.error.message, json.error.data);
+    if (S.offline) { S.offline = false; updateBanner(); }
     return json.data;
   } catch (e) {
     if (typeof e.code === 'string') throw e;
@@ -282,14 +391,45 @@ async function api(method, action, payload) {
     clearTimeout(timer);
   }
 }
+/** 暗証番号がちがうと返ってきたら、覚えていた番号を忘れる */
+function forgetPinIfBad(e) { if (e.code === 'BAD_PIN') S.adminPin = null; }
+/** 店舗コードが変わったら入れ直してもらう */
+function toCodeScreen() {
+  S.storeCode = ''; store.set('storeCode', '');
+  S.msg = '店舗コードが かわりました。もういちど いれてください。';
+  go('code');
+}
+
+/* ---------- 在庫・ロット・販売済みの値札をまとめて更新 ---------- */
+function applySync(d) {
+  if (!d || !S.init) return;
+  if (d.stock) S.init.products.forEach(p => { if (d.stock[p.id] !== undefined) p.stock = d.stock[p.id]; });
+  if (d.lots) S.init.lots = d.lots;
+  if (d.soldTags) { S.sold = new Set(d.soldTags); S.init.soldTags = d.soldTags; }
+  store.set('init', S.init);
+  const R = REF.step2;
+  if (R) R.prodGrid.replaceChildren(...S.init.products.map(productButton));
+}
+async function refreshStock() {
+  try { applySync(await api('GET', 'stock')); } catch (e) { /* 次の決済で確かめられるので無視 */ }
+}
 
 /* ---------- 画面の切り替え ---------- */
 const VIEWS = {};
-function render() {
+function updateBanner() {
   const banner = document.getElementById('banner');
-  const practice = S.init && S.init.settings.practiceMode;
-  banner.hidden = !practice;
-  banner.textContent = practice ? '✏ れんしゅう ちゅう（この きろくは 決算に はいりません）' : '';
+  const parts = [];
+  if (S.init && settings().practiceMode) parts.push('✏ れんしゅう ちゅう（この きろくは 決算に はいりません）');
+  if (S.offline) parts.push('📴 オフライン：まえに よみこんだ データで うごいています');
+  const waiting = S.queue.filter(q => q.status === 'waiting').length;
+  const failed = S.queue.filter(q => q.status === 'error').length;
+  if (waiting) parts.push('📤 まだ おくっていない とりひき ' + waiting + 'けん（つながると じどうで おくります）');
+  if (failed) parts.push('⚠ おくれなかった とりひき ' + failed + 'けん（せんせいに つたえてください）');
+  banner.hidden = !parts.length;
+  banner.textContent = parts.join('　／　');
+}
+function render() {
+  updateBanner();
   document.getElementById('app').replaceChildren(VIEWS[S.screen]());
 }
 function go(screen) {
@@ -307,19 +447,64 @@ async function boot() {
   if (!S.storeCode) return go('code');
   go('loading');
   try {
-    S.init = await api('GET', 'init');
+    const data = await api('GET', 'init');
+    S.init = data; S.offline = false;
+    S.sold = new Set(data.soldTags || []);
+    store.set('init', data);
     S.msg = null;
     go('top');
+    flushQueue();
   } catch (e) {
     if (e.code === 'UNAUTHORIZED') {
       S.storeCode = ''; store.set('storeCode', '');
       S.msg = '店舗コードが ちがいます。もういちど いれてください。';
       return go('code');
     }
+    const cached = store.get('init', null);
+    if (e.code === 'NETWORK' && cached) {
+      // つながらなくても、前回のデータでレジを開けるようにする（10.1）
+      S.init = cached; S.offline = true;
+      S.sold = new Set(cached.soldTags || []);
+      go('top');
+      return;
+    }
     S.msg = e.message;
     go('error');
   }
 }
+
+/* ---------- 未送信キュー（10.1） ---------- */
+function saveQueue() { store.set('queue', S.queue); updateBanner(); }
+function enqueue(payload, total) {
+  if (S.queue.some(q => q.txId === payload.txId)) return;
+  S.queue.push({ txId: payload.txId, payload: payload, clientTime: new Date().toISOString(), total: total, status: 'waiting', msg: '' });
+  saveQueue();
+}
+let flushing = false;
+async function flushQueue() {
+  if (flushing || !S.init || !S.queue.some(q => q.status === 'waiting')) return;
+  flushing = true;
+  try {
+    for (const q of S.queue.filter(x => x.status === 'waiting')) {
+      try {
+        const d = await api('POST', 'checkout', Object.assign({}, q.payload, { queued: true, clientTime: q.clientTime }));
+        S.queue = S.queue.filter(x => x.txId !== q.txId);
+        saveQueue();
+        applySync(d);
+      } catch (e) {
+        if (['NETWORK', 'BUSY', 'SERVER', 'UNAUTHORIZED'].indexOf(e.code) >= 0) break;   // あとでもう一度
+        q.status = 'error'; q.msg = e.message;                                             // 内容の問題は管理者に見てもらう
+        saveQueue();
+      }
+    }
+  } finally {
+    flushing = false;
+    updateBanner();
+    if (S.screen === 'admin') render();
+  }
+}
+window.addEventListener('online', () => { flushQueue(); refreshStock(); });
+setInterval(flushQueue, 20000);
 
 /* =====================================================================
  * 画面：読み込み・エラー・店舗コード
@@ -328,7 +513,7 @@ VIEWS.loading = () => h('div', { class: 'screen center' }, h('p', { class: 'big'
 
 VIEWS.error = () => h('div', { class: 'screen narrow' },
   h('header', { class: 'bar' }, h('span'), h('h1', null, 'うまく いきませんでした'), h('span')),
-  h('p', { class: 'note err', role: 'alert' }, S.msg || 'エラーが おきました。'),
+  note('err', S.msg || 'エラーが おきました。'),
   h('div', { class: 'row' },
     h('button', { class: 'btn go', onclick: boot }, '🔄 もういちど'),
     isConfigured() ? h('button', { class: 'btn stop', onclick: () => { S.storeCode = ''; store.set('storeCode', ''); S.msg = null; go('code'); } }, '店舗コードを いれなおす') : null),
@@ -349,31 +534,40 @@ VIEWS.code = () => {
   setTimeout(() => input.focus(), 0);
   return h('div', { class: 'screen narrow' },
     h('header', { class: 'bar' }, h('span'), h('h1', null, rb('店舗', 'てんぽ'), 'コード'), h('span')),
-    S.msg ? h('p', { class: 'note err', role: 'alert' }, S.msg) : null,
+    S.msg ? note('err', S.msg) : null,
     h('label', { for: 'code', class: 'big' }, 'せんせいから きいた ', rb('店舗', 'てんぽ'), 'コードを いれてください'),
     input,
     h('p', { id: 'codehelp', class: 'muted' }, 'この たんまつに おぼえさせるので、つぎからは いれなくて だいじょうぶです。'),
-    h('div', { class: 'actions' }, h('button', { class: 'btn go big', onclick: submit }, 'はじめる ▶')));
+    actions(h('button', { class: 'btn go big', onclick: submit }, 'はじめる ▶')));
 };
 
 /* =====================================================================
  * 画面：トップ（部門をえらぶ）と部門の画面
  * ===================================================================== */
-const JOB_DASHBOARD = { key: 'dashboard', icon: '📊', label: () => [rb('決算', 'けっさん'), 'を みる'] };
-const JOB_REGISTER = { key: 'register', icon: '🧾', label: () => 'レジ' };
+const JOBS = {
+  dashboard: { icon: '📊', label: () => [rb('決算', 'けっさん'), 'を みる'], open: () => openDashboard() },
+  register: { icon: '🧾', label: () => 'レジ', open: () => openRegister() },
+  sales: { icon: '📋', label: () => 'うれた きろく', open: () => openSales() },
+  void: { icon: '↩', label: () => [rb('取消', 'とりけし')], open: () => openVoid() },
+  production: { icon: '🔨', label: () => 'つくった かずの きろく', open: () => openProduction() },
+  labels: { icon: '🏷', label: () => 'ねふだの いんさつ', open: () => openLabelList() },
+  timecard: { icon: '⏱', label: () => 'タイムカード', open: () => openTimecard() },
+  openDay: { icon: '🔓', label: () => 'おみせを あける', open: () => openOpenDay() },
+  closing: { icon: '🔒', label: () => 'レジじめ', open: () => openClosing(), when: () => settings().useCashClosing },
+};
 const DEPTS = {
-  '経営': { icon: '🏢', label: () => rb('経営', 'けいえい'), jobs: [JOB_DASHBOARD],
+  '経営': { icon: '🏢', label: () => rb('経営', 'けいえい'), jobs: ['dashboard', 'openDay', 'timecard'],
     later: ['ぜんたいの ようすを 1がめんで みる', 'ねだんを かえる・ついかで つくる などの けいえいの はんだん', 'れんしゅう もんだい'] },
-  '商品企画': { icon: '💡', label: () => [rb('商品', 'しょうひん'), rb('企画', 'きかく')], jobs: [],
+  '商品企画': { icon: '💡', label: () => [rb('商品', 'しょうひん'), rb('企画', 'きかく')], jobs: ['timecard'],
     later: ['ねだんを かんがえる', '何こ うれば くろじに なるかの けいさん（損益分岐点）', 'うれる かずの よそう', 'れんしゅう もんだい'] },
-  '仕入・在庫': { icon: '📦', label: () => [rb('仕入', 'しいれ'), '・', rb('在庫', 'ざいこ')], jobs: [],
+  '仕入・在庫': { icon: '📦', label: () => [rb('仕入', 'しいれ'), '・', rb('在庫', 'ざいこ')], jobs: ['timecard'],
     later: ['ざいりょうの かくにん', 'ひつような ざいりょうの けいさん', 'たなおろし', 'れんしゅう もんだい'] },
-  '生産': { icon: '🔨', label: () => rb('生産', 'せいさん'), jobs: [],
-    later: ['つくった かず・しっぱいした かずの きろく', 'ねふだ（ラベル）の いんさつ', 'タイムカード', 'ざいりょうから 何こ つくれるかの けいさん', 'れんしゅう もんだい'] },
-  '販売': { icon: '🛒', label: () => rb('販売', 'はんばい'), jobs: [JOB_REGISTER],
-    later: ['だれが 何を 何こ うったかの きろく', 'こすうと うりあげの しょうごう', 'とりけし', 'れんしゅう もんだい'] },
-  '会計・総務': { icon: '🧮', label: () => [rb('会計', 'かいけい'), '・', rb('総務', 'そうむ')], jobs: [JOB_DASHBOARD],
-    later: ['けいひの きろく', 'レジじめ（おかねを かぞえて きろくと くらべる）', 'じぶんで けっさんを けいさんする', 'れんしゅう もんだい'] },
+  '生産': { icon: '🔨', label: () => rb('生産', 'せいさん'), jobs: ['production', 'labels', 'timecard'],
+    later: ['ざいりょうから 何こ つくれるかの けいさん', 'れんしゅう もんだい'] },
+  '販売': { icon: '🛒', label: () => rb('販売', 'はんばい'), jobs: ['register', 'sales', 'void', 'timecard'],
+    later: ['こすうと うりあげの しょうごう', 'れんしゅう もんだい'] },
+  '会計・総務': { icon: '🧮', label: () => [rb('会計', 'かいけい'), '・', rb('総務', 'そうむ')], jobs: ['dashboard', 'openDay', 'closing', 'timecard'],
+    later: ['けいひの きろく', 'じぶんで けっさんを けいさんする', 'れんしゅう もんだい'] },
 };
 
 function prefsPanel() {
@@ -394,9 +588,10 @@ function prefsPanel() {
 }
 
 VIEWS.top = () => {
-  const s = S.init.settings;
+  const s = settings();
   return h('div', { class: 'screen' },
-    h('header', { class: 'bar' }, h('span'), h('h1', null, s.eventName || '販売・決算DX'), h('span')),
+    h('header', { class: 'bar' }, h('span'), h('h1', null, s.eventName || '販売・決算DX'),
+      h('button', { class: 'btn sm', onclick: openAdmin }, '🔑 かんり')),
     s.orgName ? h('p', { class: 'org' }, s.orgName) : null,
     h('h2', null, 'どの ', rb('部門', 'ぶもん'), 'で しごとを しますか？'),
     h('div', { class: 'grid' }, s.departments.filter(d => DEPTS[d]).map(d => h('button', {
@@ -408,34 +603,30 @@ VIEWS.top = () => {
 
 VIEWS.dept = () => {
   const d = DEPTS[S.dept];
+  const jobs = d.jobs.map(k => JOBS[k]).filter(j => !j.when || j.when());
   return h('div', { class: 'screen' },
     h('header', { class: 'bar' }, backBtn(() => go('top')), h('h1', null, d.icon, ' ', d.label()), h('span')),
-    d.jobs.length
-      ? h('div', { class: 'grid', style: 'margin-top:20px' }, d.jobs.map(j => h('button', { class: 'btn go job', onclick: () => openJob(j.key) },
-        h('span', { class: 'icon', 'aria-hidden': 'true' }, j.icon), j.label())))
-      : h('p', { class: 'note', style: 'margin-top:20px' }, 'この ', rb('部門', 'ぶもん'), 'の しごとは、つぎの バージョンで つかえるように なります。'),
+    h('div', { class: 'grid', style: 'margin-top:20px' }, jobs.map(j => h('button', { class: 'btn go job', onclick: j.open },
+      h('span', { class: 'icon', 'aria-hidden': 'true' }, j.icon), j.label()))),
     h('section', { class: 'later' }, h('h3', null, 'これから つかえるように なる しごと'), h('ul', null, d.later.map(t => h('li', null, t)))),
     versionLine());
 };
-
-function openJob(key) {
-  if (key === 'register') openRegister();
-  if (key === 'dashboard') openDashboard();
-}
+function backToDept() { go(S.dept ? 'dept' : 'top'); }
 
 /* =====================================================================
  * 画面：レジ（1 担当者 → 2 商品 → 3 お客さん → 4 お金 → 5 決済 → 完了）
  * ===================================================================== */
-const STEPS = [
+const REG_STEPS = [
   () => rb('担当者', 'たんとうしゃ'),
   () => rb('商品', 'しょうひん'),
   () => ['お', rb('客', 'きゃく'), 'さん'],
   () => 'おかね',
   () => rb('決済', 'けっさい'),
 ];
+const TAG_RE = /^[A-Za-z0-9_]+(-[A-Za-z0-9_]+)*-\d{6}-\d{1,3}-\d{3}$/;
 
 function newReg(member) {
-  return { step: member ? 2 : 1, member: member, cart: [], segment: null, tendered: 0, txId: null, pending: false, sending: false, result: null, notice: null, msg: null };
+  return { step: member ? 2 : 1, member: member, cart: [], segment: null, tendered: 0, txId: null, sending: false, result: null, notice: null, msg: null };
 }
 function openRegister() {
   const saved = store.get('member', null);
@@ -449,28 +640,22 @@ async function goStep(n) {
   S.reg.step = n;
   go('register');
 }
+/** カゴの1行：{ id, qty, tags:[個体ID…] }。qty は値札の分も含む */
 function cartTotal() { return S.reg.cart.reduce((a, l) => a + prod(l.id).price * l.qty, 0); }
+function cartTags() { return S.reg.cart.reduce((a, l) => a.concat(l.tags), []); }
 function takeNotice() { const n = S.reg.notice; S.reg.notice = null; return n; }
 
-function progressBar(step) {
-  return h('ol', { class: 'progress', 'aria-label': 'すすみぐあい' }, STEPS.map((label, i) => {
-    const n = i + 1;
-    return h('li', { class: n < step ? 'done' : null, 'aria-current': n === step ? 'step' : null },
-      n < step ? '✓ ' : n === step ? '▶ ' : '', n, ' ', label());
-  }));
-}
 function regHeader() {
   const r = S.reg;
   let back = null;
-  if (r.step === 1) back = () => go('dept');
+  if (r.step === 1) back = backToDept;
   else if (r.step >= 2 && r.step <= 5) back = () => goStep(r.step - 1);
-  const locked = r.step === 5 && (r.pending || r.sending);
   return [
     h('header', { class: 'bar' },
-      back ? backBtn(back, locked) : h('span'),
+      back ? backBtn(back, r.sending) : h('span'),
       h('h1', null, 'レジ'),
       h('span', { class: 'who' }, r.member ? [rb('担当', 'たんとう'), '：', memberName(r.member)] : '')),
-    progressBar(Math.min(r.step, 6)),
+    progressBar(REG_STEPS, Math.min(r.step, 6)),
   ];
 }
 
@@ -487,26 +672,27 @@ function viewStep1() {
         class: 'btn' + (r.member === m.id ? ' selected' : ''), 'aria-pressed': String(r.member === m.id),
         onclick: () => { r.member = m.id; store.set('member', m.id); goStep(2); },
       }, r.member === m.id ? '✓ ' : '', m.name)))
-      : h('p', { class: 'note err' }, 'メンバーが とうろく されていません。せんせいに つたえてください。'));
+      : note('err', 'メンバーが とうろく されていません。せんせいに つたえてください。'));
 }
 
 /* ---- 2 商品 ---- */
 function productButton(p) {
-  const soldOut = !S.init.settings.allowOversell && p.stock <= 0;
+  const soldOut = !canOversell() && p.stock <= 0;
   return h('button', {
     class: 'btn prod', 'data-id': p.id, disabled: soldOut,
-    'aria-label': p.name + ' ' + yen(p.price) + (soldOut ? ' うりきれ' : ''),
-    onclick: () => addToCart(p.id),
+    'aria-label': p.name + ' ' + yen(p.price) + (soldOut ? ' うりきれ' : ' のこり' + p.stock + 'こ'),
+    onclick: () => addToCart(p.id, null),
   },
   h('span', { class: 'icon', 'aria-hidden': 'true' }, p.icon || '📦'),
   h('span', { class: 'pname' }, p.name),
-  h('span', { class: 'pprice' }, soldOut ? '✖ うりきれ' : yen(p.price)));
+  h('span', { class: 'pprice' }, soldOut ? '✖ うりきれ' : yen(p.price)),
+  soldOut ? null : h('small', null, 'のこり ', Math.max(0, p.stock), 'こ'));
 }
 
 function viewStep2() {
   const notice = takeNotice();
   const scanMsg = h('p', { class: 'scanmsg' + (notice ? ' ' + notice.type : ''), role: 'status', 'aria-live': 'polite' },
-    notice ? notice.text : 'QRコードを よむか、しょうひんの ボタンを おしてください。');
+    notice ? notice.text : 'ねふだの QRコードを よむか、しょうひんの ボタンを おしてください。');
   const camBtn = h('button', { class: 'btn', onclick: toggleCamera }, '📷 カメラで よむ');
   const flipBtn = h('button', { class: 'btn', onclick: flipCamera, hidden: true }, '🔄 カメラを きりかえる');
   const prodGrid = h('div', { class: 'grid prods' }, S.init.products.map(productButton));
@@ -523,7 +709,7 @@ function viewStep2() {
         scanMsg,
         prodGrid),
       h('section', { class: 'cartcol', 'aria-label': 'カゴ' }, h('h3', null, '🧺 カゴの なか'), cartBox)),
-    h('div', { class: 'actions' }, h('span', { class: 'total-label' }, rb('合計', 'ごうけい')), totalEl, nextBtn));
+    actions(h('span', { class: 'total-label' }, rb('合計', 'ごうけい')), totalEl, nextBtn));
   updateCart();
   return el;
 }
@@ -541,6 +727,7 @@ function updateCart() {
       return h('li', { class: 'line' },
         h('div', { class: 'lname' }, p.icon ? p.icon + ' ' : '', p.name),
         h('div', null, yen(p.price), ' × ', line.qty, 'こ ＝ ', h('b', null, yen(p.price * line.qty))),
+        line.tags.length ? h('div', { class: 'muted', style: 'font-size:0.8rem' }, '🏷 ねふだ ', line.tags.length, 'まい') : null,
         h('div', { class: 'lbtns' },
           h('button', { class: 'btn sm', 'aria-label': p.name + 'を 1こ へらす', disabled: line.qty <= 1, onclick: () => changeQty(line.id, -1) }, '－ へらす'),
           h('button', { class: 'btn sm', 'aria-label': p.name + 'を 1こ ふやす', onclick: () => changeQty(line.id, 1) }, '＋ ふやす'),
@@ -560,17 +747,25 @@ function scanFeedback(ok, text) {
   R.scanMsg.textContent = (ok ? '✓ ' : '✖ ') + text;
 }
 
-function addToCart(id) {
+/** カゴに1こ入れる。tag があれば値札（個体ID）として入れる */
+function addToCart(id, tag) {
   const p = prod(id);
   if (!p) { scanFeedback(false, 'この コードは しょうひんに ありません。'); return; }
-  const line = S.reg.cart.find(l => l.id === id);
+  let line = S.reg.cart.find(l => l.id === id);
   const inCart = line ? line.qty : 0;
-  if (!S.init.settings.allowOversell && inCart + 1 > p.stock) {
+  if (!canOversell() && inCart + 1 > p.stock) {
     scanFeedback(false, p.name + 'は これいじょう ありません（のこり ' + Math.max(0, p.stock) + 'こ）。');
     return;
   }
-  if (line) line.qty += 1; else S.reg.cart.push({ id: id, qty: 1 });
-  scanFeedback(true, p.name + 'を カゴに いれました（' + (inCart + 1) + 'こ）。');
+  if (!line) { line = { id: id, qty: 0, tags: [] }; S.reg.cart.push(line); }
+  line.qty += 1;
+  if (tag) line.tags.push(tag);
+  let extra = '';
+  if (tag) {
+    const lot = S.init.lots[tag.slice(0, tag.lastIndexOf('-'))];
+    if (lot && lot.price && lot.price !== p.price) extra = ' ねふだの ねだん（' + yen(lot.price) + '）と いまの ねだん（' + yen(p.price) + '）が ちがいます。いまの ねだんで うります。';
+  }
+  scanFeedback(true, p.name + 'を カゴに いれました（' + line.qty + 'こ）。' + extra);
   updateCart();
   const btn = REF.step2 && REF.step2.prodGrid.querySelector('[data-id="' + CSS.escape(id) + '"]');
   if (btn) { btn.classList.add('flash'); setTimeout(() => btn.classList.remove('flash'), 500); }
@@ -578,14 +773,38 @@ function addToCart(id) {
 function changeQty(id, delta) {
   const line = S.reg.cart.find(l => l.id === id);
   if (!line) return;
-  if (delta > 0) { addToCart(id); return; }
-  if (line.qty + delta < 1) return;
-  line.qty += delta;
+  if (delta > 0) { addToCart(id, null); return; }
+  if (line.qty <= 1) return;
+  if (line.qty === line.tags.length) line.tags.pop();   // 値札の分しかなければ、最後に読んだ値札を外す
+  line.qty -= 1;
   updateCart();
 }
 function removeLine(id) {
   S.reg.cart = S.reg.cart.filter(l => l.id !== id);
   updateCart();
+}
+
+/** 読み取った文字：値札（個体ID）か、商品IDか */
+function onScan(text) {
+  const code = String(text).trim();
+  const now = Date.now();
+  if (code === lastScan.text && now - lastScan.t < 2000) return;   // 同じコードの連続読み取りを防ぐ
+  lastScan = { text: code, t: now };
+  handleCode(code);
+}
+function handleCode(code) {
+  if (TAG_RE.test(code)) {
+    if (cartTags().indexOf(code) >= 0) { scanFeedback(false, 'この ねふだは もう よみました。'); return; }
+    if (S.sold.has(code)) { scanFeedback(false, 'この ねふだの しょうひんは もう うれています。せんせいに みせてください。'); return; }
+    const lot = S.init.lots[code.slice(0, code.lastIndexOf('-'))];
+    const seq = parseInt(code.slice(-3), 10);
+    if (!lot || seq < 1 || seq > lot.n) { scanFeedback(false, 'とうろく されていない ねふだ です。しょうひんの ボタンを つかってください。'); return; }
+    if (lot.x && !settings().practiceMode) { scanFeedback(false, 'れんしゅう用の ねふだ です。ほんばんでは つかえません。'); return; }
+    addToCart(lot.p, code);
+    return;
+  }
+  const p = S.init.products.find(x => x.id === code) || S.init.products.find(x => x.id.toUpperCase() === code.toUpperCase());
+  addToCart(p ? p.id : null, null);
 }
 
 /* ---- カメラ（QRコード） ---- */
@@ -626,35 +845,17 @@ async function flipCamera() {
   await stopCamera();
   await startCamera();
 }
-function onScan(text) {
-  const code = String(text).trim();
-  const now = Date.now();
-  if (code === lastScan.text && now - lastScan.t < 2000) return;   // 同じコードの連続読み取りを防ぐ
-  lastScan = { text: code, t: now };
-  const p = S.init.products.find(x => x.id === code) || S.init.products.find(x => x.id.toUpperCase() === code.toUpperCase());
-  addToCart(p ? p.id : null);
-}
-
-function applyStock(stock) {
-  if (!stock || !S.init) return;
-  S.init.products.forEach(p => { if (stock[p.id] !== undefined) p.stock = stock[p.id]; });
-  const R = REF.step2;
-  if (R) R.prodGrid.replaceChildren(...S.init.products.map(productButton));
-}
-async function refreshStock() {
-  try { applyStock((await api('GET', 'stock')).stock); } catch (e) { /* 次の決済で確認されるので無視 */ }
-}
 
 /* ---- 3 お客さん ---- */
 function viewStep3() {
   const r = S.reg;
   return h('div', { class: 'screen' }, ...regHeader(),
     h('h2', null, 'どの お', rb('客', 'きゃく'), 'さん ですか？'),
-    h('div', { class: 'grid' }, S.init.settings.segments.map(sg => h('button', {
+    h('div', { class: 'grid' }, settings().segments.map(sg => h('button', {
       class: 'btn' + (r.segment === sg ? ' selected' : ''), 'aria-pressed': String(r.segment === sg),
       onclick: () => { r.segment = sg; render(); },
     }, r.segment === sg ? '✓ ' : '', sg))),
-    h('div', { class: 'actions' },
+    actions(
       h('span', null, r.segment ? ['えらんだ：', h('b', null, r.segment)] : 'えらんで ください'),
       h('button', { class: 'btn go big', disabled: !r.segment, onclick: () => goStep(4) }, 'つぎへ ▶')));
 }
@@ -672,7 +873,7 @@ function viewStep4() {
   else status = h('p', { class: 'status note err' }, '✖ おかねが ', yen(-diff), ' たりません。');
   const add = v => { r.tendered += v; render(); };
   return h('div', { class: 'screen' }, ...regHeader(),
-    notice ? h('p', { class: 'note ' + notice.type, role: 'alert' }, notice.text) : null,
+    notice ? note(notice.type, notice.text) : null,
     h('h2', null, 'うけとった おかねを いれる'),
     h('div', { class: 'sum3' },
       kv(rb('合計', 'ごうけい'), yen(total)),
@@ -686,8 +887,7 @@ function viewStep4() {
     h('div', { class: 'row' },
       h('button', { class: 'btn', onclick: () => { r.tendered = total; render(); } }, '🟰 ちょうど'),
       h('button', { class: 'btn stop', onclick: () => { r.tendered = 0; render(); } }, '✖ やりなおし')),
-    h('div', { class: 'actions' },
-      h('button', { class: 'btn go big', disabled: total === 0 || r.tendered < total, onclick: () => goStep(5) }, 'つぎへ ▶')));
+    actions(h('button', { class: 'btn go big', disabled: total === 0 || r.tendered < total, onclick: () => goStep(5) }, 'つぎへ ▶')));
 }
 
 /* ---- 5 確認と決済 ---- */
@@ -697,7 +897,7 @@ function viewStep5() {
   const row = (k, v) => [h('dt', null, k), h('dd', null, v)];
   return h('div', { class: 'screen' }, ...regHeader(),
     h('h2', null, 'これで ', rb('決済', 'けっさい'), 'しますか？'),
-    r.msg ? h('p', { class: 'note ' + r.msg.type, role: 'alert' }, r.msg.text) : null,
+    r.msg ? note(r.msg.type, r.msg.text) : null,
     h('section', { class: 'cartcol', style: 'margin-bottom:12px' },
       h('ul', { class: 'lines' }, r.cart.map(l => {
         const p = prod(l.id);
@@ -709,9 +909,20 @@ function viewStep5() {
       row(rb('合計', 'ごうけい'), h('span', { class: 'money' }, yen(total))),
       row('あずかった おかね', yen(r.tendered)),
       row('おつり', h('span', { class: 'money' }, yen(r.tendered - total)))),
-    h('div', { class: 'actions' },
+    actions(
       h('button', { class: 'btn ok big', disabled: r.sending, onclick: submitCheckout },
         r.sending ? 'おくって います…' : ['✓ ', rb('決済', 'けっさい'), 'する'])));
+}
+
+function checkoutPayload() {
+  const r = S.reg;
+  const items = [];
+  r.cart.forEach(l => {
+    l.tags.forEach(t => items.push({ tagId: t }));
+    const rest = l.qty - l.tags.length;
+    if (rest > 0) items.push({ productId: l.id, qty: rest });
+  });
+  return { txId: r.txId, memberId: r.member, segment: r.segment, tendered: r.tendered, items: items };
 }
 
 async function submitCheckout() {
@@ -719,55 +930,78 @@ async function submitCheckout() {
   if (r.sending) return;                 // 連打を受け付けない
   if (!r.txId) r.txId = uuid();          // 同じ取引は同じIDで送る（再送しても二重にならない）
   r.sending = true; r.msg = null; render();
-  const payload = { txId: r.txId, memberId: r.member, segment: r.segment, tendered: r.tendered, items: r.cart.map(l => ({ productId: l.id, qty: l.qty })) };
+  const payload = checkoutPayload();
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const data = await api('POST', 'checkout', payload);
-      r.sending = false; r.pending = false; r.result = data;
-      applyStock(data.stock);
+      r.sending = false; r.result = data;
+      applySync({ stock: data.stock });
+      (data.soldTags || []).forEach(t => S.sold.add(t));
       beep(true);
       r.step = 6; go('register');
+      flushQueue();
       return;
     } catch (e) {
       if (e.code === 'BUSY' && attempt < 3) { await sleep(1000 * (attempt + 1)); continue; }
       r.sending = false;
-      handleCheckoutError(e);
+      handleCheckoutError(e, payload);
       return;
     }
   }
 }
 
-function handleCheckoutError(e) {
+function handleCheckoutError(e, payload) {
   const r = S.reg;
-  beep(false);
   switch (e.code) {
     case 'NETWORK':
-    case 'SERVER':
-      // 記録されたかわからないので、同じ取引IDのまま再送してもらう
-      r.pending = true;
-      r.msg = { type: 'err', text: e.message + '　もういちど「決済する」を おしてください。おなじ とりひき として おくるので、2かい うれた ことには なりません。' };
-      render(); return;
+    case 'SERVER': {
+      // 記録されたかわからない・つながらない → 端末に保存して、あとで同じ取引IDで送る（10.1）
+      const total = cartTotal();
+      enqueue(payload, total);
+      r.cart.forEach(l => { const p = prod(l.id); p.stock -= l.qty; l.tags.forEach(t => S.sold.add(t)); });
+      store.set('init', S.init);
+      r.result = { txId: r.txId, total: total, tendered: r.tendered, change: r.tendered - total, queued: true };
+      beep(true);
+      r.step = 6; go('register');
+      return;
+    }
     case 'OUT_OF_STOCK':
       r.txId = null;
-      if (e.data && e.data.stock) applyStock(e.data.stock);
-      r.cart.forEach(l => { const p = prod(l.id); if (!S.init.settings.allowOversell && l.qty > p.stock) l.qty = Math.max(0, p.stock); });
+      if (e.data && e.data.stock) applySync({ stock: e.data.stock });
+      r.cart.forEach(l => {
+        const p = prod(l.id);
+        while (!canOversell() && l.qty > Math.max(0, p.stock) && l.qty > 0) { if (l.qty === l.tags.length) l.tags.pop(); l.qty--; }
+      });
       r.cart = r.cart.filter(l => l.qty > 0);
       r.notice = { type: 'err', text: '✖ ' + e.message + '　カゴの こすうを なおしました。たしかめてください。' };
-      goStep(2); return;
+      beep(false); goStep(2); return;
+    case 'ALREADY_SOLD':
+    case 'UNKNOWN_TAG': {
+      r.txId = null;
+      const bad = (e.data && e.data.tags) || [];
+      if (e.code === 'ALREADY_SOLD') bad.forEach(t => S.sold.add(t));
+      r.cart.forEach(l => {
+        const before = l.tags.length;
+        l.tags = l.tags.filter(t => bad.indexOf(t) < 0);
+        l.qty -= before - l.tags.length;
+      });
+      r.cart = r.cart.filter(l => l.qty > 0);
+      r.notice = { type: 'err', text: '✖ ' + e.message + '　その ねふだを カゴから はずしました。' };
+      beep(false); goStep(2); return;
+    }
     case 'INSUFFICIENT_CASH':
       r.txId = null;
       r.notice = { type: 'err', text: '✖ ' + e.message };
-      goStep(4); return;
+      beep(false); goStep(4); return;
     case 'UNAUTHORIZED':
-      S.storeCode = ''; store.set('storeCode', '');
-      S.msg = '店舗コードが かわりました。もういちど いれてください。';
-      go('code'); return;
+      toCodeScreen(); return;
     case 'BUSY':
       r.msg = { type: 'err', text: 'こみあって います。すこし まって、もういちど「決済する」を おしてください。' };
-      render(); return;
+      beep(false); render(); return;
     default:
       r.txId = null;
-      if (e.data && e.data.field === 'member') { r.member = null; r.notice = null; goStep(1); return; }
+      beep(false);
+      if (e.data && e.data.field === 'member') { r.member = null; goStep(1); return; }
       if (e.data && e.data.field === 'segment') { r.segment = null; goStep(3); return; }
       r.msg = { type: 'err', text: e.message };
       render();
@@ -775,33 +1009,808 @@ function handleCheckoutError(e) {
 }
 
 /* ---- 完了 ---- */
-const DENOMS = [10000, 5000, 1000, 500, 100, 50, 10, 5, 1];
-function breakdown(n) {
-  const out = [];
-  let rest = n;
-  DENOMS.forEach(v => { const c = Math.floor(rest / v); if (c > 0) { out.push([v, c]); rest -= c * v; } });
-  return out;
-}
 function viewStep6() {
   const d = S.reg.result;
   const shortId = String(d.txId).replace(/-/g, '').slice(-6).toUpperCase();
   return h('div', { class: 'screen' }, ...regHeader(),
     h('div', { class: 'done-box', role: 'status' },
-      h('p', { class: 'big' }, '✓ ', rb('決済', 'けっさい'), 'が おわりました'),
-      d.practice ? h('p', { class: 'note' }, '✏ れんしゅうの きろく です（決算には はいりません）') : null,
+      d.queued
+        ? h('p', { class: 'big' }, '✓ きろく しました（あとで おくります）')
+        : h('p', { class: 'big' }, '✓ ', rb('決済', 'けっさい'), 'が おわりました'),
+      d.queued ? h('p', { class: 'muted' }, 'いまは つながらないので、この たんまつに ほぞん しました。つながると じどうで おくります。') : null,
+      d.practice ? note('', '✏ れんしゅうの きろく です（決算には はいりません）') : null,
       d.duplicate ? h('p', { class: 'muted' }, '（さきほど おくった とりひきが きろく されていました）') : null,
+      d.afterClose ? note('err', 'きょうの レジじめの あとの とりひき です。せんせいに つたえて、レジじめを やりなおして ください。') : null,
       h('p', null, rb('取引', 'とりひき'), 'ばんごう：', h('b', { class: 'mono' }, shortId)),
       h('p', { class: 'big', style: 'margin-bottom:0' }, 'おつり'),
       h('p', { class: 'money huge', style: 'margin:0' }, yen(d.change)),
-      d.change > 0
-        ? h('ul', { class: 'coins', 'aria-label': 'わたす おかね' }, breakdown(d.change).map(([v, c]) => h('li', null, v >= 1000 ? '💴 ' : '🪙 ', v.toLocaleString('ja-JP'), '円 × ', c, 'まい')))
-        : h('p', null, 'おつりは ありません。')),
-    h('div', { class: 'actions' }, h('button', { class: 'btn go big', onclick: nextCustomer }, 'つぎの お', rb('客', 'きゃく'), 'さん ▶')));
+      d.change > 0 ? coinList(d.change) : h('p', null, 'おつりは ありません。')),
+    actions(h('button', { class: 'btn go big', onclick: nextCustomer }, 'つぎの お', rb('客', 'きゃく'), 'さん ▶')));
 }
 function nextCustomer() {
   S.reg = newReg(S.reg.member);
   refreshStock();   // ほかのレジで売れた分を反映
   goStep(2);
+}
+
+/* =====================================================================
+ * 画面：生産（1 担当者 → 2 商品 → 3 かず → 4 かくにん → 完了・値札の印刷へ）
+ * ===================================================================== */
+const PD_STEPS = [() => rb('担当者', 'たんとうしゃ'), () => rb('商品', 'しょうひん'), 'かず', 'かくにん'];
+
+function openProduction() {
+  const saved = store.get('member', null);
+  const member = S.init.members.some(m => m.id === saved) ? saved : null;
+  S.pd = { step: member ? 2 : 1, member: member, product: null, made: 0, loss: 0, reason: '', dept: null, recordId: null, sending: false, msg: null, result: null };
+  go('production');
+}
+function pdGo(n) { S.pd.step = n; S.pd.msg = null; go('production'); }
+function memberGroup(id) { const m = S.init.members.find(x => x.id === id); return m ? m.group : ''; }
+
+VIEWS.production = () => {
+  const d = S.pd;
+  const back = d.step === 1 || d.step === 5 ? backToDept : () => pdGo(d.step - 1);
+  const head = [
+    h('header', { class: 'bar' }, backBtn(back, d.sending), h('h1', null, '🔨 つくった かずの きろく'),
+      h('span', { class: 'who' }, d.member ? [rb('担当', 'たんとう'), '：', memberName(d.member)] : '')),
+    progressBar(PD_STEPS, Math.min(d.step, 5)),
+  ];
+  if (d.step === 1) {
+    return h('div', { class: 'screen' }, ...head, h('h2', null, 'だれが つくりましたか？'),
+      h('div', { class: 'grid' }, S.init.members.map(m => h('button', {
+        class: 'btn' + (d.member === m.id ? ' selected' : ''), 'aria-pressed': String(d.member === m.id),
+        onclick: () => { d.member = m.id; store.set('member', m.id); pdGo(2); },
+      }, d.member === m.id ? '✓ ' : '', m.name))));
+  }
+  if (d.step === 2) {
+    return h('div', { class: 'screen' }, ...head, h('h2', null, 'どの ', rb('商品', 'しょうひん'), 'を つくりましたか？'),
+      h('div', { class: 'grid prods' }, S.init.products.map(p => {
+        const ratio = p.target > 0 ? Math.min(1, p.made / p.target) : 0;
+        return h('button', {
+          class: 'btn prod' + (d.product === p.id ? ' selected' : ''), 'aria-pressed': String(d.product === p.id),
+          onclick: () => { if (d.product !== p.id) { d.made = 0; d.loss = 0; d.reason = ''; d.recordId = null; } d.product = p.id; pdGo(3); },
+        },
+        h('span', { class: 'icon', 'aria-hidden': 'true' }, p.icon || '📦'),
+        h('span', { class: 'pname' }, p.name),
+        p.target > 0 ? [h('small', null, 'つくった ', p.made, ' ／ もくひょう ', p.target),
+          h('span', { class: 'meter', 'aria-hidden': 'true' }, h('i', { style: 'width:' + Math.round(ratio * 100) + '%' }))]
+          : h('small', null, 'つくった ', p.made, 'こ'));
+      })));
+  }
+  if (d.step === 3) {
+    const reasons = settings().lossReasons || [];
+    return h('div', { class: 'screen' }, ...head,
+      h('h2', null, prod(d.product).name, ' を なんこ つくりましたか？'),
+      counter('できた（よいもの）', d.made, v => { d.made = v; d.recordId = null; render(); }, { name: 'できた かず' }),
+      counter('しっぱい（ロス）', d.loss, v => { d.loss = v; d.recordId = null; if (!v) d.reason = ''; render(); }, { name: 'しっぱいの かず' }),
+      d.loss > 0 ? [h('h3', null, 'しっぱいの りゆう'), chips(reasons.map(x => [x, x]), d.reason, v => { d.reason = v; render(); }, 'しっぱいの りゆう')] : null,
+      actions(h('button', { class: 'btn go big', disabled: d.made + d.loss === 0, onclick: () => { if (d.dept === null) d.dept = memberGroup(d.member); pdGo(4); } }, 'つぎへ ▶')));
+  }
+  if (d.step === 4) {
+    const groups = (S.init.groups || []).map(g => [g, g]).concat([['', 'なし']]);
+    const row = (k, v) => [h('dt', null, k), h('dd', null, v)];
+    return h('div', { class: 'screen' }, ...head,
+      h('h2', null, 'これで きろく しますか？'),
+      d.msg ? note(d.msg.type, d.msg.text) : null,
+      h('dl', { class: 'sum' },
+        row(rb('商品', 'しょうひん'), prod(d.product).name),
+        row('できた かず', h('b', { class: 'money' }, d.made, 'こ')),
+        row('しっぱい', d.loss + 'こ' + (d.reason ? '（' + d.reason + '）' : '')),
+        row('ねふだ', d.made > 0 ? d.made + 'まい つくります' : 'つくりません')),
+      h('h3', null, 'ねふだに いれる ', rb('部署', 'ぶしょ'), '（つくった はん）'),
+      chips(groups, d.dept || '', v => { d.dept = v; render(); }, '部署'),
+      actions(h('button', { class: 'btn ok big', disabled: d.sending, onclick: submitProduction }, d.sending ? 'おくって います…' : '✓ きろく する')));
+  }
+  // 5 完了
+  const res = d.result;
+  return h('div', { class: 'screen' }, ...head,
+    h('div', { class: 'done-box', role: 'status' },
+      h('p', { class: 'big' }, '✓ きろく しました'),
+      res.duplicate ? h('p', { class: 'muted' }, '（さきほど おくった きろくが のこって いました）') : null,
+      h('p', null, prod(d.product).name, '：できた ', res.made, 'こ ／ しっぱい ', res.loss, 'こ'),
+      res.lot ? h('p', null, 'ロットばんごう：', h('b', { class: 'mono' }, res.lot)) : null,
+      res.labels && res.labels.practice ? note('', '✏ れんしゅうの きろく です') : null),
+    h('div', { class: 'row', style: 'justify-content:center;margin-top:20px' },
+      res.labels ? h('button', { class: 'btn go big', onclick: () => openLabelPrint(res.labels, false, 'production') }, '🏷 ねふだを いんさつ する ▶') : null,
+      h('button', { class: 'btn big', onclick: () => { Object.assign(d, { product: null, made: 0, loss: 0, reason: '', recordId: null, result: null }); pdGo(2); } }, 'つづけて きろく する')));
+};
+
+async function submitProduction() {
+  const d = S.pd;
+  if (d.sending) return;
+  if (!d.recordId) d.recordId = uuid();   // 同じ記録は同じIDで送る（再送しても二重にならない）
+  d.sending = true; d.msg = null; render();
+  try {
+    const res = await api('POST', 'production', {
+      recordId: d.recordId, memberId: d.member, productId: d.product, made: d.made, loss: d.loss, lossReason: d.reason, dept: d.dept || '',
+    });
+    d.sending = false; d.result = res;
+    const p = prod(d.product);
+    if (p && !res.duplicate && !(res.labels && res.labels.practice)) p.made += res.made;
+    applySync({ stock: res.stock, lots: res.lots });
+    beep(true);
+    d.step = 5; go('production');
+  } catch (e) {
+    d.sending = false;
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    if (e.code !== 'NETWORK' && e.code !== 'SERVER' && e.code !== 'BUSY') d.recordId = null;
+    d.msg = { type: 'err', text: e.message + (e.code === 'NETWORK' || e.code === 'SERVER' ? '　もういちど「きろく する」を おしてください（2かい きろく される ことは ありません）。' : '') };
+    beep(false); render();
+  }
+}
+
+/* =====================================================================
+ * 画面：値札の一覧（再印刷）
+ * ===================================================================== */
+async function openLabelList() {
+  S.labList = { loading: true };
+  go('labelList');
+  try { S.labList = { list: (await api('GET', 'labels')).list }; }
+  catch (e) { if (e.code === 'UNAUTHORIZED') return toCodeScreen(); S.labList = { error: e }; }
+  if (S.screen === 'labelList') render();
+}
+VIEWS.labelList = () => {
+  const L = S.labList;
+  const body = L.loading ? h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…')
+    : L.error ? [note('err', L.error.message), h('button', { class: 'btn go', onclick: openLabelList }, '🔄 もういちど')]
+      : !L.list.length ? note('', 'まだ ねふだの ある きろくが ありません。「つくった かずの きろく」から つくってください。')
+        : h('ul', { class: 'list' }, L.list.map(x => h('li', null, h('button', {
+          class: 'btn', onclick: async () => {
+            try { openLabelPrint(await api('GET', 'labels', { lot: x.lot }), true, 'labelList'); }
+            catch (e) { L.error = e; render(); }
+          },
+        }, '🏷 ', h('b', null, x.productName), '　', x.made, 'まい　', h('span', { class: 'mono' }, x.lot), '　', x.date, x.dept ? '・' + x.dept : '', x.practice ? '　✏れんしゅう' : ''))));
+  return page('🏷 ねふだの いんさつ', backToDept, h('h2', null, 'いんさつ する ロットを えらんで ください'), body, versionLine());
+};
+
+/* =====================================================================
+ * 画面：値札ラベルの印刷（設計書5.8）
+ * ===================================================================== */
+// よく使う面数のひな形（目安）。用紙の仕様書の寸法に合わせて直してください
+const LABEL_PRESETS = [
+  { key: 'a4-10', name: 'A4 10面（2列×5行）', cols: 2, rows: 5, w: 86.4, h: 50.8, top: 21.5, left: 14, gapX: 9.2, gapY: 0 },
+  { key: 'a4-12', name: 'A4 12面（2列×6行）', cols: 2, rows: 6, w: 86.4, h: 42.3, top: 21.6, left: 18.6, gapX: 0, gapY: 0 },
+  { key: 'a4-18', name: 'A4 18面（3列×6行）', cols: 3, rows: 6, w: 70, h: 42.3, top: 21.6, left: 0, gapX: 0, gapY: 0 },
+  { key: 'a4-21', name: 'A4 21面（3列×7行）', cols: 3, rows: 7, w: 70, h: 38.1, top: 15.15, left: 0, gapX: 0, gapY: 0 },
+  { key: 'a4-24', name: 'A4 24面（3列×8行）', cols: 3, rows: 8, w: 70, h: 33.9, top: 13.1, left: 0, gapX: 0, gapY: 0 },
+  { key: 'a4-44', name: 'A4 44面（4列×11行）', cols: 4, rows: 11, w: 48.3, h: 25.4, top: 8.8, left: 8.4, gapX: 0, gapY: 0 },
+];
+const LAYOUT_KEYS = ['cols', 'rows', 'w', 'h', 'top', 'left', 'gapX', 'gapY'];
+const LABEL_PAD = 1.2;   // mm
+
+function loadLayout() {
+  const saved = store.get('labelLayout', null);
+  if (saved && LAYOUT_KEYS.every(k => typeof saved[k] === 'number')) return saved;
+  const s = String(settings().labelLayout || '').split(',').map(Number);
+  if (s.length === 8 && s.every(n => isFinite(n))) {
+    const o = { key: 'custom', name: 'せってい の すんぽう' };
+    LAYOUT_KEYS.forEach((k, i) => { o[k] = s[i]; });
+    return o;
+  }
+  return Object.assign({}, LABEL_PRESETS[1]);
+}
+function loadOffset() {
+  const saved = store.get('labelOffset', null);
+  if (saved && typeof saved.x === 'number') return saved;
+  const s = String(settings().labelOffset || '0,0').split(',').map(Number);
+  return { x: isFinite(s[0]) ? s[0] : 0, y: isFinite(s[1]) ? s[1] : 0 };
+}
+/** 二次元コード1辺（余白込み）の大きさ。余白を除いた本体が15mm以上必要 */
+function qrSize(L) { return Math.min(L.h - 2 * LABEL_PAD, L.w * 0.45, 32); }
+function layoutError(L) {
+  if (!(L.cols >= 1 && L.rows >= 1 && L.cols <= 10 && L.rows <= 20 && Number.isInteger(L.cols) && Number.isInteger(L.rows))) return '列数と行数を たしかめて ください。';
+  if (!(L.w > 0 && L.h > 0) || L.top < 0 || L.left < 0 || L.gapX < 0 || L.gapY < 0) return 'すんぽうを たしかめて ください（0より大きい数）。';
+  if (L.left + L.cols * L.w + (L.cols - 1) * L.gapX > 210.05) return 'よこが A4（210mm）を こえています。すんぽうを たしかめて ください。';
+  if (L.top + L.rows * L.h + (L.rows - 1) * L.gapY > 297.05) return 'たてが A4（297mm）を こえています。すんぽうを たしかめて ください。';
+  if (qrSize(L) * 25 / 33 < 15) return 'この ようしは ちいさすぎて、二次元コードを 15mm いじょうに できません。もっと 大きい ラベルを えらんで ください。';
+  return '';
+}
+function isCompact(L) { return L.w < 60 || L.h < 30; }
+
+function openLabelPrint(data, reprint, from) {
+  S.lab = {
+    data: data, reprint: reprint, from: from, layout: loadLayout(), offset: loadOffset(),
+    start: 1, mode: 'trial', range: 'all', rangeFrom: 1, rangeTo: data.tags.length, edit: false, msg: null, printed: false,
+  };
+  go('labelPrint');
+}
+function saveLayout() { store.set('labelLayout', S.lab.layout); store.set('labelOffset', S.lab.offset); }
+
+/** 二次元コード（誤り訂正レベルM、周りに4セルの余白）を SVG で作る */
+function qrSvg(text, sizeMm) {
+  const q = qrcode(0, 'M');
+  q.addData(text);
+  q.make();
+  const n = q.getModuleCount(), m = 4, full = n + 2 * m;
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
+  return svg('svg', { class: 'qr', viewBox: '0 0 ' + full + ' ' + full, style: 'width:' + sizeMm + 'mm;height:' + sizeMm + 'mm', 'shape-rendering': 'crispEdges', role: 'img', 'aria-label': text },
+    svg('rect', { width: full, height: full, fill: '#fff' }), svg('path', { d: d, fill: '#000' }));
+}
+
+function slotPos(L, off, slot) {
+  const col = slot % L.cols, row = Math.floor(slot / L.cols);
+  return { left: L.left + off.x + col * (L.w + L.gapX), top: L.top + off.y + row * (L.h + L.gapY) };
+}
+function labelBox(L, off, slot, frame) {
+  const p = slotPos(L, off, slot);
+  return h('div', { class: 'lbl' + (frame ? ' frame' : ''), style: 'left:' + p.left + 'mm;top:' + p.top + 'mm;width:' + L.w + 'mm;height:' + L.h + 'mm' });
+}
+/** 値札1枚：製品名・価格（いちばん大きく）・個体ID・製造日・製造元＋部署・二次元コード */
+function labelNode(data, tag, L, off, slot, frame) {
+  const box = labelBox(L, off, slot, frame);
+  const compact = isCompact(L);
+  const f = compact ? { n: 6, p: 9.5, i: 4.6, d: 5, o: 5 } : { n: 8.5, p: 15, i: 6, d: 6.5, o: 6.5 };
+  const org = compact ? (data.orgShort || data.org) : data.org;
+  box.append(
+    qrSvg(tag, qrSize(L)),
+    h('div', { class: 't' },
+      h('div', { style: 'font-size:' + f.n + 'pt;font-weight:700' }, data.practice ? '【練習】' : '', data.productName),
+      h('div', { style: 'font-size:' + f.p + 'pt;font-weight:800' }, data.price.toLocaleString('ja-JP'), '円'),
+      h('div', { class: 'i', style: 'font-size:' + f.i + 'pt' }, tag),
+      h('div', { style: 'font-size:' + f.d + 'pt' }, compact ? '製造 ' + data.dateShort : '製造日 ' + data.date),
+      h('div', { style: 'font-size:' + f.o + 'pt' }, [org, data.dept].filter(Boolean).join(' '))));
+  return box;
+}
+function selectedTags() {
+  const b = S.lab;
+  if (b.range === 'all') return b.data.tags.slice();
+  return b.data.tags.slice(b.rangeFrom - 1, b.rangeTo);
+}
+/** 印刷するページ（A4）を作る。試し刷りでは全部のラベル位置に枠線を引く */
+function buildLabelSheets(onlyFirst) {
+  const b = S.lab, L = b.layout, off = b.offset, per = L.cols * L.rows;
+  const tags = selectedTags();
+  const trial = b.mode === 'trial';
+  const sheets = [];
+  let slot = b.start - 1, i = 0;
+  while (i < tags.length || (!sheets.length && !tags.length)) {
+    const sheet = h('div', { class: 'sheet' });
+    const used = {};
+    while (slot < per && i < tags.length) { sheet.append(labelNode(b.data, tags[i], L, off, slot, trial)); used[slot] = true; slot++; i++; }
+    if (trial) for (let s = 0; s < per; s++) if (!used[s]) sheet.append(labelBox(L, off, s, true));
+    sheets.push(sheet);
+    slot = 0;
+    if (onlyFirst || !tags.length) break;
+  }
+  return sheets;
+}
+
+/** 印刷用の領域に入れて印刷する */
+function printNodes(nodes, pageCss) {
+  document.getElementById('print-area').replaceChildren(...nodes);
+  document.getElementById('page-style').textContent = pageCss;
+  setTimeout(() => window.print(), 100);
+}
+
+VIEWS.labelPrint = () => {
+  const b = S.lab, L = b.layout, d = b.data;
+  const per = L.cols * L.rows;
+  const err = layoutError(L);
+  const qrReady = typeof qrcode === 'function';
+  const back = () => (b.from === 'production' ? go('production') : go('labelList'));
+  const num = (key, label, step, obj) => {
+    const o = obj || L;
+    const input = h('input', { type: 'number', step: step, value: o[key], id: 'lb-' + key, inputmode: 'decimal' });
+    input.addEventListener('change', () => { const v = Number(input.value); if (isFinite(v)) { o[key] = v; o.key = 'custom'; saveLayout(); render(); } });
+    return h('div', { class: 'field' }, h('label', { for: 'lb-' + key }, label), input);
+  };
+  const tags = selectedTags();
+  const pages = Math.ceil((b.start - 1 + tags.length) / per);
+
+  let preview = null;
+  if (!err && qrReady) {
+    const k = 0.42;
+    const sheet = buildLabelSheets(true)[0];
+    sheet.style.transform = 'scale(' + k + ')';
+    preview = h('div', { class: 'preview', style: 'width:' + (210 * k) + 'mm;height:' + (297 * k) + 'mm', 'aria-label': '1まいめの みほん' }, sheet);
+  }
+
+  return page('🏷 ねふだの いんさつ', back,
+    h('p', null, h('b', null, d.productName), '　ロット ', h('span', { class: 'mono' }, d.lot), '　', d.made, 'まい　（', d.price.toLocaleString('ja-JP'), '円・', d.date, '）'),
+    d.price !== d.currentPrice ? note('err', 'いまの ねだん（' + yen(d.currentPrice) + '）と ねふだの ねだん（' + yen(d.price) + '）が ちがいます。') : null,
+    !qrReady ? note('err', '二次元コードを つくる じゅんびが できていません。インターネットに つないで、がめんを よみこみ なおして ください。') : null,
+
+    h('div', { class: 'panel' },
+      h('h3', null, '1. ようし'),
+      (() => {
+        const sel = h('select', { style: 'font:inherit;padding:8px;border:2px solid #333;border-radius:8px;max-width:100%', 'aria-label': 'ようし' },
+          LABEL_PRESETS.map(p => h('option', { value: p.key, selected: L.key === p.key }, p.name)),
+          h('option', { value: 'custom', selected: L.key === 'custom' || !LABEL_PRESETS.some(p => p.key === L.key) }, 'じぶんで すんぽうを いれる'));
+        sel.addEventListener('change', () => {
+          const p = LABEL_PRESETS.find(x => x.key === sel.value);
+          if (p) { b.layout = Object.assign({}, p); b.start = 1; saveLayout(); render(); } else { b.edit = true; L.key = 'custom'; render(); }
+        });
+        return sel;
+      })(),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'ひな形の すんぽうは めやす です。つかう ラベル用紙の しようしょの すんぽうに あわせて なおして ください。'),
+      h('details', { open: b.edit || !!err, ontoggle: e => { b.edit = e.target.open; } },
+        h('summary', { style: 'cursor:pointer;font-weight:700;min-height:44px;display:flex;align-items:center' }, 'すんぽうを なおす（mm）'),
+        num('cols', '列の数', 1), num('rows', '行の数', 1), num('w', 'ラベルの はば', 0.1), num('h', 'ラベルの たかさ', 0.1),
+        num('top', 'うえの よはく', 0.1), num('left', 'ひだりの よはく', 0.1), num('gapX', 'よこの すきま', 0.1), num('gapY', 'たての すきま', 0.1)),
+      err ? note('err', err) : null,
+      !err && isCompact(L) ? h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'ちいさい ラベル なので、せいぞう日は みじかく、せいぞう元は りゃくしょう で いんさつ します。') : null),
+
+    h('div', { class: 'panel' },
+      h('h3', null, '2. どこから はるか（つかいかけの ようし）'),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, '1まいめの ねふだを いんさつ する ばしょを おしてください。'),
+      h('div', { class: 'slots', role: 'group', 'aria-label': 'かいし いち', style: 'grid-template-columns:repeat(' + L.cols + ',auto)' },
+        Array.from({ length: Math.min(per, 220) }, (_, i) => h('button', {
+          class: 'btn' + (b.start === i + 1 ? ' selected' : ''), 'aria-pressed': String(b.start === i + 1), onclick: () => { b.start = i + 1; render(); },
+        }, i + 1)))),
+
+    h('div', { class: 'panel' },
+      h('h3', null, '3. いんさつ する ねふだ'),
+      chips([['all', 'ぜんぶ（' + d.tags.length + 'まい）'], ['some', 'ばんごうを えらぶ']], b.range, v => { b.range = v; render(); }, 'いんさつ する はんい'),
+      b.range === 'some' ? [
+        counter('はじめの ばんごう', b.rangeFrom, v => { b.rangeFrom = Math.min(v, b.rangeTo); render(); }, { min: 1, max: d.tags.length, steps: [-1, 1], unit: 'ばん' }),
+        counter('おわりの ばんごう', b.rangeTo, v => { b.rangeTo = Math.max(v, b.rangeFrom); render(); }, { min: 1, max: d.tags.length, steps: [-1, 1], unit: 'ばん' }),
+      ] : null),
+
+    h('div', { class: 'panel' },
+      h('h3', null, '4. ためしずり と ほんばん'),
+      chips([['trial', '📄 ためしずり（ふつうの かみ・わくせん つき）'], ['real', '🏷 ほんばん（ラベル用紙）']], b.mode, v => { b.mode = v; render(); }, 'いんさつの しゅるい'),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'さいしょは ふつうの かみに ためしずりして、ラベル用紙に かさねて ずれを たしかめて ください。'),
+      h('div', { class: 'field' }, h('label', null, 'よこの ずれ'),
+        h('button', { class: 'btn sm', onclick: () => { b.offset.x = Math.round((b.offset.x - 0.5) * 10) / 10; saveLayout(); render(); } }, '◀ 0.5mm'),
+        h('b', { 'aria-live': 'polite' }, b.offset.x, 'mm'),
+        h('button', { class: 'btn sm', onclick: () => { b.offset.x = Math.round((b.offset.x + 0.5) * 10) / 10; saveLayout(); render(); } }, '0.5mm ▶')),
+      h('div', { class: 'field' }, h('label', null, 'たての ずれ'),
+        h('button', { class: 'btn sm', onclick: () => { b.offset.y = Math.round((b.offset.y - 0.5) * 10) / 10; saveLayout(); render(); } }, '▲ 0.5mm'),
+        h('b', { 'aria-live': 'polite' }, b.offset.y, 'mm'),
+        h('button', { class: 'btn sm', onclick: () => { b.offset.y = Math.round((b.offset.y + 0.5) * 10) / 10; saveLayout(); render(); } }, '0.5mm ▼'))),
+
+    h('h3', null, 'みほん（1まいめ）'),
+    preview || h('p', { class: 'muted' }, 'すんぽうを なおすと みほんが でます。'),
+    b.printed ? note('ok', '✓ いんさつの がめんを ひらきました。') : null,
+    note('', '⚠ いんさつ の せっていで「ばいりつ 100%（じっさいの サイズ）」を えらび、「ページに あわせる」は オフに して ください。'),
+    actions(
+      h('span', null, tags.length, 'まい ／ ', pages, 'ページ'),
+      h('button', { class: 'btn go big', disabled: !!err || !qrReady || !tags.length, onclick: printLabels }, '🖨 いんさつ する')));
+};
+
+function printLabels() {
+  const b = S.lab;
+  if (b.mode === 'real' && b.reprint) {
+    const range = b.range === 'all' ? 'ぜんぶ' : b.rangeFrom + '-' + b.rangeTo;
+    api('GET', 'labels', { lot: b.data.lot, reprint: '1', range: range }).catch(() => {});   // 再印刷を操作ログに残す
+  }
+  printNodes(buildLabelSheets(false), '@page { size: A4 portrait; margin: 0; }');
+  b.printed = true;
+  render();
+}
+
+/* =====================================================================
+ * 画面：タイムカード（この端末で「始める」「終わる」。分数の直接入力も可）
+ * ===================================================================== */
+function saveTimers() { store.set('timers', S.timers); }
+function openTimecard() {
+  S.tc = { mode: 'list', member: null, task: null, minutes: 30, msg: null, sending: null, recordId: null };
+  go('timecard');
+}
+function elapsedMin(t) { return Math.max(1, Math.round((Date.now() - t.start) / 60000)); }
+function hhmm(ms) { const d = new Date(ms); return d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2); }
+
+async function sendTimecard(recordId, member, task, minutes) {
+  return api('POST', 'timecard', { recordId: recordId, memberId: member, task: task, minutes: minutes });
+}
+async function stopTimer(t) {
+  const c = S.tc;
+  if (c.sending) return;
+  c.sending = t.id; c.msg = null; render();
+  try {
+    const res = await sendTimecard(t.id, t.member, t.task, Math.min(720, elapsedMin(t)));
+    S.timers = S.timers.filter(x => x.id !== t.id); saveTimers();
+    c.msg = { type: 'ok', text: '✓ ' + memberName(t.member) + '：' + t.task + ' ' + res.minutes + 'ふん を きろく しました。' };
+    beep(true);
+  } catch (e) {
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    c.msg = { type: 'err', text: e.message + '　もういちど「おわる」を おしてください。' };
+    beep(false);
+  }
+  c.sending = null; render();
+}
+
+VIEWS.timecard = () => {
+  const c = S.tc;
+  const tasks = settings().tasks || ['生産', '販売', 'その他'];
+  if (c.mode === 'who') {
+    return page('⏱ タイムカード', () => { c.mode = 'list'; render(); },
+      h('h2', null, 'だれが はたらきますか？'),
+      h('div', { class: 'grid' }, S.init.members.map(m => {
+        const running = S.timers.some(t => t.member === m.id);
+        return h('button', { class: 'btn', disabled: running, onclick: () => { c.member = m.id; c.mode = 'what'; render(); } }, m.name, running ? '（はたらいて います）' : '');
+      })));
+  }
+  if (c.mode === 'what') {
+    return page('⏱ タイムカード', () => { c.mode = 'who'; render(); },
+      h('h2', null, memberName(c.member), 'さんは、どの しごとを しますか？'),
+      h('div', { class: 'grid' }, tasks.map(t => h('button', { class: 'btn', onclick: () => { c.task = t; c.mode = 'how'; c.recordId = null; render(); } }, t))));
+  }
+  if (c.mode === 'how') {
+    return page('⏱ タイムカード', () => { c.mode = 'what'; render(); },
+      h('h2', null, memberName(c.member), 'さん：', c.task),
+      c.msg ? note(c.msg.type, c.msg.text) : null,
+      h('div', { class: 'panel' },
+        h('h3', null, 'いまから はじめる'),
+        h('button', { class: 'btn go big', onclick: () => {
+          S.timers.push({ id: uuid(), member: c.member, task: c.task, start: Date.now() }); saveTimers();
+          c.msg = { type: 'ok', text: '✓ ' + memberName(c.member) + 'さんの ' + c.task + ' を はじめました（' + hhmm(Date.now()) + '）。おわったら「おわる」を おしてください。' };
+          c.mode = 'list'; beep(true); render();
+        } }, '▶ はじめる')),
+      h('div', { class: 'panel' },
+        h('h3', null, 'はたらいた じかんを いれて きろく する'),
+        counter('じかん', c.minutes, v => { c.minutes = v; c.recordId = null; render(); }, { min: 1, max: 720, steps: [-30, -5, 5, 30], unit: 'ふん' }),
+        h('button', { class: 'btn ok big', disabled: !!c.sending, onclick: async () => {
+          if (!c.recordId) c.recordId = uuid();
+          c.sending = 'manual'; c.msg = null; render();
+          try {
+            const res = await sendTimecard(c.recordId, c.member, c.task, c.minutes);
+            c.msg = { type: 'ok', text: '✓ ' + memberName(c.member) + '：' + c.task + ' ' + res.minutes + 'ふん を きろく しました。' };
+            c.mode = 'list'; c.recordId = null; beep(true);
+          } catch (e) {
+            if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+            c.msg = { type: 'err', text: e.message }; beep(false);
+          }
+          c.sending = null; render();
+        } }, c.sending ? 'おくって います…' : '✓ きろく する')));
+  }
+  // 一覧
+  return page('⏱ タイムカード', backToDept,
+    c.msg ? note(c.msg.type, c.msg.text) : null,
+    h('h2', null, 'いま はたらいて いる ひと（この たんまつ）'),
+    S.timers.length
+      ? h('div', { class: 'list' }, S.timers.map(t => h('div', { class: 'timer' },
+        h('div', null, h('b', null, memberName(t.member)), '　', t.task, '　', hhmm(t.start), 'から　', h('b', null, elapsedMin(t), 'ふん')),
+        h('button', { class: 'btn ok', disabled: c.sending === t.id, onclick: () => stopTimer(t) }, c.sending === t.id ? 'おくって います…' : '⏹ おわる'))))
+      : h('p', { class: 'muted' }, 'いまは だれも はたらいて いません。'),
+    h('p', { class: 'muted', style: 'font-size:0.85rem' }, '「はじめる」は この たんまつに おぼえます。おわる ときも おなじ たんまつで おしてください。'),
+    actions(h('button', { class: 'btn go big', onclick: () => { c.mode = 'who'; c.msg = null; render(); } }, '＋ はたらく ひとを ついか')));
+};
+setInterval(() => { if (S.screen === 'timecard' && S.tc && S.tc.mode === 'list' && S.timers.length && !S.tc.sending) render(); }, 30000);
+
+/* =====================================================================
+ * 暗証番号の入力（取消・レジ締め・管理で使う）
+ * ===================================================================== */
+function pinField(state) {
+  if (S.adminPin) return h('p', { class: 'muted' }, '🔑 かんりしゃの あんしょう ばんごうは にゅうりょく ずみ です。');
+  const input = h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', class: 'pin', id: 'pin', value: state.pin || '', 'aria-label': 'かんりしゃの あんしょう ばんごう' });
+  input.addEventListener('input', () => { state.pin = input.value.trim(); });
+  return h('div', { class: 'field' }, h('label', { for: 'pin' }, '🔑 かんりしゃの ', rb('暗証番号', 'あんしょうばんごう')), input);
+}
+function pinValue(state) { return S.adminPin || state.pin || ''; }
+
+/* =====================================================================
+ * 画面：取消（直近の取引から選び、管理者の暗証番号で取り消す）
+ * ===================================================================== */
+async function openVoid() {
+  S.vd = { loading: true, sel: null, msg: null, done: null, sending: false, pin: '' };
+  go('void');
+  await loadRecent();
+}
+async function loadRecent() {
+  const v = S.vd;
+  v.loading = true;
+  try { v.list = (await api('GET', 'recent')).list; v.error = null; }
+  catch (e) { if (e.code === 'UNAUTHORIZED') return toCodeScreen(); v.error = e; }
+  v.loading = false;
+  if (S.screen === 'void') render();
+}
+VIEWS.void = () => {
+  const v = S.vd;
+  if (v.done) {
+    return page(['↩ ', rb('取消', 'とりけし')], backToDept,
+      h('div', { class: 'done-box', role: 'status' },
+        h('p', { class: 'big' }, '✓ とりけし ました'),
+        h('p', null, 'おきゃくさんに かえす おかね'),
+        h('p', { class: 'money huge', style: 'margin:0' }, yen(v.done.refund)),
+        v.done.refund > 0 ? coinList(v.done.refund) : null),
+      actions(h('button', { class: 'btn go big', onclick: () => { v.done = null; v.sel = null; v.list = null; v.loading = true; render(); loadRecent(); } }, 'いちらんに もどる')));
+  }
+  if (v.sel) {
+    const t = v.sel;
+    return page(['↩ ', rb('取消', 'とりけし')], () => { v.sel = null; v.msg = null; render(); },
+      h('h2', null, 'この とりひきを とりけし ますか？'),
+      v.msg ? note(v.msg.type, v.msg.text) : null,
+      h('dl', { class: 'sum' },
+        h('dt', null, 'じこく'), h('dd', null, t.time),
+        h('dt', null, rb('担当者', 'たんとうしゃ')), h('dd', null, t.memberName),
+        h('dt', null, 'しょうひん'), h('dd', null, t.items.map(i => i.name + '×' + i.qty).join('、')),
+        h('dt', null, rb('合計', 'ごうけい')), h('dd', null, h('b', { class: 'money' }, yen(t.total)))),
+      h('p', { class: 'muted' }, 'もとの きろくは のこり、マイナスの きろくが ついか されます。うりあげ と ざいこ は もとに もどります。'),
+      pinField(v),
+      actions(h('button', { class: 'btn danger big', disabled: v.sending, onclick: submitVoid }, v.sending ? 'おくって います…' : ['✖ ', rb('取消', 'とりけし'), 'する'])));
+  }
+  const body = v.loading && !v.list ? h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…')
+    : v.error ? [note('err', v.error.message), h('button', { class: 'btn go', onclick: loadRecent }, '🔄 もういちど')]
+      : !v.list.length ? h('p', { class: 'muted' }, 'まだ とりひきが ありません。')
+        : h('ul', { class: 'list' }, v.list.map(t => h('li', null, h('button', {
+          class: 'btn', disabled: t.voided, onclick: () => { v.sel = t; v.msg = null; render(); },
+        }, h('b', null, t.time), '　', t.memberName, '　', t.items.map(i => i.name + '×' + i.qty).join('、'), '　', h('b', null, yen(t.total)),
+        t.voided ? h('span', { class: 'tag-voided' }, '　（とりけし ずみ）') : null, t.practice ? '　✏れんしゅう' : ''))));
+  return page(['↩ ', rb('取消', 'とりけし')], backToDept,
+    h('h2', null, 'とりけす とりひきを えらんで ください（さいきんの 20けん）'), body, versionLine());
+};
+async function submitVoid() {
+  const v = S.vd;
+  if (v.sending) return;
+  const pin = pinValue(v);
+  if (!pin) { v.msg = { type: 'err', text: 'あんしょう ばんごうを いれて ください。' }; render(); return; }
+  v.sending = true; v.msg = null; render();
+  try {
+    const res = await api('POST', 'void', { originTxId: v.sel.txId, adminPin: pin, memberId: store.get('member', '') });
+    S.adminPin = pin;
+    applySync({ stock: res.stock, soldTags: res.soldTags });
+    v.done = res; v.sel = null; beep(true);
+  } catch (e) {
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    forgetPinIfBad(e);
+    v.msg = { type: 'err', text: e.message }; beep(false);
+  }
+  v.sending = false; render();
+}
+
+/* =====================================================================
+ * 画面：販売実績（担当者別・商品別。順位は付けない）
+ * ===================================================================== */
+async function openSales(scope) {
+  S.sales = { scope: scope || (S.sales && S.sales.scope) || 'today', loading: true };
+  go('sales');
+  try { S.sales.data = await api('GET', 'sales', { scope: S.sales.scope }); }
+  catch (e) { if (e.code === 'UNAUTHORIZED') return toCodeScreen(); S.sales.error = e; }
+  S.sales.loading = false;
+  if (S.screen === 'sales') render();
+}
+VIEWS.sales = () => {
+  const s = S.sales;
+  const head = chips([['today', 'きょう'], ['all', 'ぜんぶ']], s.scope, v => openSales(v), 'きかん');
+  if (s.loading) return page('📋 うれた きろく', backToDept, head, h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…'));
+  if (s.error) return page('📋 うれた きろく', backToDept, head, note('err', s.error.message));
+  const d = s.data;
+  const num = v => h('td', { class: 'num' }, v);
+  return page('📋 うれた きろく', backToDept, head,
+    h('p', { class: 'muted' }, s.scope === 'today' ? d.date + ' の きろく' : 'これまで ぜんぶの きろく', '（とりけしは さしひいて います）'),
+    h('div', { class: 'sum3' },
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, rb('取引', 'とりひき'), 'の かず'), h('div', { class: 'money' }, d.total.txCount, 'けん')),
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, 'うれた こすう'), h('div', { class: 'money' }, d.total.qty, 'こ')),
+      h('div', { class: 'kv' }, h('div', { class: 'k' }, rb('売上', 'うりあげ')), h('div', { class: 'money' }, yen(d.total.sales)))),
+    h('h3', null, 'だれが うったか（ばんごう じゅん）'),
+    h('table', { class: 'tbl' },
+      h('thead', null, h('tr', null, h('th', null, rb('担当者', 'たんとうしゃ')), h('th', { class: 'num' }, '取引'), h('th', { class: 'num' }, 'こすう'), h('th', { class: 'num' }, '売上'))),
+      h('tbody', null, d.members.map(m => h('tr', null, h('td', null, m.name), num(m.txCount + 'けん'), num(m.qty + 'こ'), num(yen(m.sales)))))),
+    h('h3', null, 'なにが うれたか'),
+    h('table', { class: 'tbl' },
+      h('thead', null, h('tr', null, h('th', null, rb('商品', 'しょうひん')), h('th', { class: 'num' }, 'こすう'), h('th', { class: 'num' }, '売上'))),
+      h('tbody', null, d.products.map(p => h('tr', null, h('td', null, p.icon ? p.icon + ' ' : '', p.name), num(p.qty + 'こ'), num(yen(p.sales)))))),
+    versionLine());
+};
+
+/* =====================================================================
+ * 画面：お店をあける（釣銭準備金と区分）
+ * ===================================================================== */
+async function loadDay(date) {
+  try { return await api('GET', 'day', date ? { date: date } : {}); }
+  catch (e) { if (e.code === 'UNAUTHORIZED') toCodeScreen(); throw e; }
+}
+async function openOpenDay() {
+  S.day = { loading: true, msg: null };
+  go('openDay');
+  try {
+    const d = await loadDay();
+    S.day = { data: d, kind: d.kind, float: d.floatCash !== null ? d.floatCash : d.defaultFloat, msg: null, sending: false };
+  } catch (e) { S.day = { error: e }; }
+  if (S.screen === 'openDay') render();
+}
+VIEWS.openDay = () => {
+  const s = S.day;
+  if (s.loading) return page('🔓 おみせを あける', backToDept, h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…'));
+  if (s.error) return page('🔓 おみせを あける', backToDept, note('err', s.error.message), h('button', { class: 'btn go', onclick: openOpenDay }, '🔄 もういちど'));
+  const d = s.data;
+  if (d.status === '締め済み') {
+    return page('🔓 おみせを あける', backToDept, note('', 'きょう（' + d.date + '）は もう レジじめが おわっています。'), versionLine());
+  }
+  const add = v => { s.float += v; render(); };
+  return page('🔓 おみせを あける', backToDept,
+    s.msg ? note(s.msg.type, s.msg.text) : null,
+    h('p', null, d.date, '　', d.exists ? (d.openedAt ? d.openedAt + ' から ' : '') + 'えいぎょう ちゅう' : 'まだ あけて いません'),
+    d.practice ? note('', '✏ れんしゅう ちゅう なので、きろく は しません。') : null,
+    h('h3', null, 'きょうの しゅるい'),
+    chips((settings().dayKinds || ['通常', '一斉販売']).map(k => [k, k === '通常' ? 'ふだん（通常）' : 'たくさん うる日（一斉販売）']), s.kind, v => { s.kind = v; render(); }, '営業日の区分'),
+    h('h3', null, rb('釣銭', 'つりせん'), 'の じゅんび（レジに さいしょに いれる おかね）'),
+    h('div', { class: 'kv' }, h('div', { class: 'money' }, yen(s.float))),
+    h('div', { class: 'cash' }, [10000, 5000, 1000, 500, 100, 50, 10].map(v => h('button', { class: 'btn sm', onclick: () => add(v) }, '＋', v.toLocaleString('ja-JP'), '円'))),
+    h('button', { class: 'btn stop', onclick: () => { s.float = 0; render(); } }, '✖ 0円に もどす'),
+    actions(h('button', { class: 'btn ok big', disabled: s.sending, onclick: submitOpenDay }, s.sending ? 'おくって います…' : '✓ おみせを あける')));
+};
+async function submitOpenDay() {
+  const s = S.day;
+  s.sending = true; s.msg = null; render();
+  try {
+    const d = await api('POST', 'openDay', { floatCash: s.float, kind: s.kind, memberId: store.get('member', '') });
+    s.data = d;
+    s.msg = { type: 'ok', text: d.practice ? '✓ れんしゅう：おみせを あけました（きろく しません）' : '✓ おみせを あけました（つりせん ' + yen(d.floatCash) + '・' + d.kind + '）' };
+    beep(true);
+  } catch (e) { s.msg = { type: 'err', text: e.message }; beep(false); }
+  s.sending = false; render();
+}
+
+/* =====================================================================
+ * 画面：レジ締め（金種ごとに数えて、記録と比べる）
+ * ===================================================================== */
+async function openClosing(date) {
+  S.cl = { loading: true, counts: {}, pin: '', msg: null, result: null, date: date || null };
+  go('closing');
+  try { S.cl.data = await loadDay(date); S.cl.date = S.cl.data.date; } catch (e) { S.cl.error = e; }
+  S.cl.loading = false;
+  if (S.screen === 'closing') render();
+}
+function countTotal(counts) { return DENOM_ALL.reduce((a, v) => a + v * (counts[v] || 0), 0); }
+VIEWS.closing = () => {
+  const c = S.cl;
+  const title = '🔒 レジじめ';
+  if (c.loading) return page(title, backToDept, h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…'));
+  if (c.error) return page(title, backToDept, note('err', c.error.message), h('button', { class: 'btn go', onclick: () => openClosing(c.date) }, '🔄 もういちど'));
+  const d = c.data;
+  if (c.result) {
+    const r = c.result;
+    const verdict = r.diff === 0 ? h('p', { class: 'big', style: 'color:var(--ok)' }, '✓ ぴったり あいました')
+      : r.diff > 0 ? h('p', { class: 'big', style: 'color:var(--stop)' }, '▲ げんきんが ', yen(r.diff), ' おおい')
+        : h('p', { class: 'big', style: 'color:var(--stop)' }, '▲ げんきんが ', yen(-r.diff), ' たりない');
+    return page(title, backToDept,
+      h('div', { class: 'done-box', role: 'status' },
+        r.practice ? note('', '✏ れんしゅう なので きろく していません') : null,
+        verdict,
+        h('dl', { class: 'sum', style: 'text-align:left' },
+          h('dt', null, rb('釣銭', 'つりせん'), 'じゅんび'), h('dd', null, yen(r.floatCash)),
+          h('dt', null, '＋ ', rb('売上', 'うりあげ'), '（きろく）'), h('dd', null, yen(r.sales)),
+          h('dt', null, '＝ レジに ある はずの おかね'), h('dd', null, h('b', null, yen(r.expected))),
+          h('dt', null, 'かぞえた おかね'), h('dd', null, h('b', null, yen(r.actual))),
+          h('dt', null, rb('過不足', 'かぶそく')), h('dd', null, h('b', { class: r.diff ? 'neg' : null }, (r.diff > 0 ? '＋' : '') + yen(r.diff))))),
+      r.diff !== 0 ? h('p', null, 'あわない ときは、もういちど かぞえて みましょう。おつりの わたしまちがい、きろくの わすれ、とりけしの わすれ が ないかも たしかめます。') : null,
+      actions(h('button', { class: 'btn', onclick: () => openClosing(c.date) }, '🔄 かぞえなおす'), h('button', { class: 'btn go big', onclick: backToDept }, 'おわる')));
+  }
+  const dateInput = h('input', { type: 'date', value: c.date, id: 'cl-date' });
+  dateInput.addEventListener('change', () => { if (dateInput.value) openClosing(dateInput.value); });
+  const total = countTotal(c.counts);
+  return page(title, backToDept,
+    h('div', { class: 'field' }, h('label', { for: 'cl-date' }, 'えいぎょう日'), dateInput,
+      h('span', null, d.status ? '（' + d.status + (d.closedAt ? ' ' + d.closedAt : '') + '）' : '（まだ きろく なし）')),
+    d.closing ? note('', 'この日は ' + (d.closedAt || '') + ' に レジじめ ずみ です（かぶそく ' + yen(d.closing.diff) + '）。もういちど おこなうと、あたらしい けっかを ただしい ものに します。') : null,
+    d.afterClose ? note('err', 'レジじめの あとの とりひきが ' + d.afterClose + 'けん あります。もういちど レジじめを して ください。') : null,
+    c.msg ? note(c.msg.type, c.msg.text) : null,
+    h('h2', null, 'レジの なかの おかねを、しゅるい ごとに かぞえて ください'),
+    h('div', { class: 'denoms' }, DENOM_ALL.map(v => {
+      const n = c.counts[v] || 0;
+      const input = h('input', { type: 'number', min: 0, max: 9999, inputmode: 'numeric', value: n, 'aria-label': v + '円の まいすう' });
+      input.addEventListener('change', () => { c.counts[v] = Math.max(0, Math.min(9999, parseInt(input.value, 10) || 0)); render(); });
+      return h('div', { class: 'denom' },
+        h('span', { class: 'k' }, v >= 1000 ? '💴 ' : '🪙 ', v.toLocaleString('ja-JP'), '円'),
+        h('button', { class: 'btn sm', disabled: n <= 0, onclick: () => { c.counts[v] = n - 1; render(); }, 'aria-label': v + '円を 1まい へらす' }, '－'),
+        input, h('span', null, 'まい'),
+        h('button', { class: 'btn sm', onclick: () => { c.counts[v] = n + 1; render(); }, 'aria-label': v + '円を 1まい ふやす' }, '＋'),
+        h('span', { class: 'muted amt' }, '＝ ', yen(v * n)));
+    })),
+    h('p', { class: 'big' }, 'かぞえた おかねの ごうけい：', yen(total)),
+    pinField(c),
+    actions(h('button', { class: 'btn ok big', disabled: c.sending, onclick: submitClosing }, c.sending ? 'おくって います…' : '✓ レジじめを する')));
+};
+async function submitClosing() {
+  const c = S.cl;
+  const pin = pinValue(c);
+  if (!pin) { c.msg = { type: 'err', text: 'あんしょう ばんごうを いれて ください。' }; render(); return; }
+  c.sending = true; c.msg = null; render();
+  try {
+    c.result = await api('POST', 'closing', { date: c.date, counts: c.counts, adminPin: pin, memberId: store.get('member', '') });
+    S.adminPin = pin; beep(true);
+  } catch (e) {
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    forgetPinIfBad(e);
+    c.msg = { type: 'err', text: e.message }; beep(false);
+  }
+  c.sending = false; render();
+}
+
+/* =====================================================================
+ * 画面：管理（暗証番号で入る）
+ * ===================================================================== */
+function openAdmin() { S.adm = { pin: '', msg: null, confirm: null, sending: false }; go('admin'); }
+async function adminOp(op, extra) {
+  const a = S.adm;
+  a.sending = true; a.msg = null; render();
+  try {
+    const res = await api('POST', 'admin', Object.assign({ op: op, adminPin: pinValue(a) }, extra || {}));
+    S.adminPin = pinValue(a);
+    a.sending = false;
+    return res;
+  } catch (e) {
+    a.sending = false;
+    if (e.code === 'UNAUTHORIZED') { toCodeScreen(); return null; }
+    forgetPinIfBad(e);
+    a.msg = { type: 'err', text: e.message }; render();
+    return null;
+  }
+}
+async function reloadInit() {
+  try { const d = await api('GET', 'init'); S.init = d; S.sold = new Set(d.soldTags || []); store.set('init', d); } catch (e) { /* 次回 */ }
+}
+VIEWS.admin = () => {
+  const a = S.adm;
+  if (!S.adminPin) {
+    return page('🔑 かんり（せんせい）', () => go('top'),
+      a.msg ? note(a.msg.type, a.msg.text) : null,
+      pinField(a),
+      actions(h('button', { class: 'btn go big', disabled: a.sending, onclick: async () => {
+        if (!a.pin) return;
+        const r = await adminOp('verify');
+        if (r) render();
+      } }, '🔑 はいる')));
+  }
+  const pm = settings().practiceMode;
+  const waiting = S.queue.filter(q => q.status === 'waiting');
+  const failed = S.queue.filter(q => q.status === 'error');
+  return page('🔑 かんり（せんせい）', () => go('top'),
+    a.msg ? note(a.msg.type, a.msg.text) : null,
+
+    h('div', { class: 'panel' },
+      h('h3', null, '練習モード（リハーサル）'),
+      h('p', null, 'いま：', h('b', null, pm ? 'れんしゅう ちゅう（記録は 決算・在庫に 入らない）' : 'ほんばん')),
+      chips([[false, 'ほんばん'], [true, 'れんしゅう']], pm, async v => {
+        if (v === pm) return;
+        const r = await adminOp('setPractice', { value: v });
+        if (r) { await reloadInit(); a.msg = { type: 'ok', text: '✓ ' + (v ? 'れんしゅう' : 'ほんばん') + 'に きりかえました。ほかの たんまつは、がめんを よみこみ なおすと きりかわります。' }; render(); }
+      }, '練習モード'),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, '練習データの けしかた：ほんばん の まえに、練習で つけた 売上・製造・タイムカードの きろくだけを けします。'),
+      a.confirm === 'clear'
+        ? h('div', { class: 'row' },
+          h('button', { class: 'btn danger', disabled: a.sending, onclick: async () => {
+            const r = await adminOp('clearPractice');
+            a.confirm = null;
+            if (r) { await reloadInit(); a.msg = { type: 'ok', text: '✓ 練習データを けしました（売上 ' + r.removed.sales + '行・製造 ' + r.removed.production + '行・タイムカード ' + r.removed.timecard + '行）' }; }
+            render();
+          } }, 'はい、けす'),
+          h('button', { class: 'btn', onclick: () => { a.confirm = null; render(); } }, 'やめる'))
+        : h('button', { class: 'btn stop', onclick: () => { a.confirm = 'clear'; render(); } }, '🗑 練習データを けす')),
+
+    h('div', { class: 'panel' },
+      h('h3', null, 'この たんまつの 未送信の とりひき'),
+      !S.queue.length ? h('p', { class: 'muted' }, 'ありません。') : h('ul', { class: 'lines' }, S.queue.map(q => h('li', { class: 'line' },
+        h('b', null, q.clientTime.slice(5, 16).replace('T', ' ')), '　', yen(q.total), '　',
+        q.status === 'waiting' ? 'おくる まち' : h('span', { class: 'neg' }, 'おくれません：' + q.msg),
+        q.status === 'error' ? (a.confirm === q.txId
+          ? h('span', null, '　', h('button', { class: 'btn sm danger', onclick: () => { S.queue = S.queue.filter(x => x.txId !== q.txId); saveQueue(); a.confirm = null; render(); } }, 'すてる'),
+            h('button', { class: 'btn sm', onclick: () => { a.confirm = null; render(); } }, 'やめる'))
+          : h('span', null, '　', h('button', { class: 'btn sm', onclick: () => { q.status = 'waiting'; q.msg = ''; saveQueue(); flushQueue(); render(); } }, 'もういちど おくる'),
+            h('button', { class: 'btn sm stop', onclick: () => { a.confirm = q.txId; render(); } }, 'すてる'))) : null))),
+      waiting.length ? h('button', { class: 'btn go', onclick: () => flushQueue() }, '📤 いま おくる') : null,
+      failed.length ? h('p', { class: 'muted', style: 'font-size:0.85rem' }, '「おくれません」は、たんとうしゃや しょうひんが けされた などで うけつけられなかった ものです。すてる まえに、かみに かきうつして ください。') : null),
+
+    h('div', { class: 'panel' },
+      h('h3', null, 'システムが つかえない ときの 手書き用紙'),
+      h('button', { class: 'btn', onclick: printPaperForm }, '🖨 手書きの 売上きろく用紙を いんさつ'),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'あとで、かんりしゃが レジの がめんで 入力して ください。')),
+
+    h('div', { class: 'panel' },
+      h('h3', null, 'そのほか'),
+      h('ul', null,
+        h('li', null, '取消：［販売］→［とりけし］'),
+        h('li', null, 'レジ締め：［会計・総務］→［レジじめ］'),
+        h('li', null, 'ラベル用紙の すんぽう：［生産］→［ねふだの いんさつ］（たんまつ ごとに ほぞん）'),
+        h('li', null, 'バックアップ：スプレッドシートの メニュー［販売DX］から せってい'))),
+
+    actions(h('button', { class: 'btn stop', onclick: () => { S.adminPin = null; go('top'); } }, '🔒 かんりを おわる')));
+};
+
+/** 手書きの売上記録用紙（A4・25行） */
+function printPaperForm() {
+  const s = settings();
+  const sheet = h('div', { class: 'sheet paper' },
+    h('h1', null, (s.eventName || '販売') + '　売上きろく用紙（手書き）'),
+    h('p', null, '日付：　　　年　　月　　日　　　レジ担当：　　　　　　　　　　　　入力した人：'),
+    h('p', null, '商品：', S.init.products.map(p => p.id + ' ' + p.name + ' ' + p.price.toLocaleString('ja-JP') + '円').join('　／　')),
+    h('table', null,
+      h('thead', null, h('tr', null, ['じこく', '担当', '商品と個数', '合計', '預かり金', 'おつり', '客層', '入力済'].map(t => h('th', null, t)))),
+      h('tbody', null, Array.from({ length: 25 }, () => h('tr', null, Array.from({ length: 8 }, () => h('td')))))));
+  printNodes([sheet], '@page { size: A4 portrait; margin: 0; }');
 }
 
 /* =====================================================================
@@ -813,7 +1822,7 @@ async function openDashboard() {
   try {
     S.dash = { data: await api('GET', 'dashboard') };
   } catch (e) {
-    if (e.code === 'UNAUTHORIZED') { S.storeCode = ''; store.set('storeCode', ''); S.msg = '店舗コードが かわりました。もういちど いれてください。'; go('code'); return; }
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
     S.dash = { error: e };
   }
   if (S.screen === 'dashboard') render();
@@ -832,7 +1841,7 @@ function plRow(sign, label, expl, amount, extra, cls) {
 }
 
 VIEWS.dashboard = () => {
-  const head = h('header', { class: 'bar' }, backBtn(() => go('dept')),
+  const head = h('header', { class: 'bar' }, backBtn(backToDept),
     h('h1', null, rb('決算', 'けっさん'), '（せいせきひょう）'),
     h('button', { class: 'btn go sm', onclick: openDashboard }, '🔄 さいしんに する'));
   if (!S.dash || S.dash.loading) return h('div', { class: 'screen' }, head, h('p', { class: 'big', role: 'status' }, 'けいさん ちゅう…'));
