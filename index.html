@@ -167,6 +167,13 @@ table.tbl { width: 100%; border-collapse: collapse; background: #fff; }
 table.tbl th, table.tbl td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
 table.tbl td.num, table.tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.tbl thead th { background: #eef0f2; }
+table.tbl td.num, table.tbl th.num { white-space: nowrap; }
+@media (max-width: 600px) {
+  .bar { grid-template-columns: auto 1fr auto; gap: 8px; }
+  .bar h1 { font-size: 1.2rem; }
+  table.tbl { font-size: 0.85rem; }
+  table.tbl th, table.tbl td { padding: 5px 5px; }
+}
 .pin { font: inherit; font-size: 1.6rem; letter-spacing: 0.3em; width: 9em; padding: 8px 12px; border: 3px solid #333; border-radius: 10px; }
 .field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .field label { min-width: 8em; font-weight: 700; }
@@ -221,7 +228,7 @@ table.tbl thead th { background: #eef0f2; }
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1wik8mNABw63NCTB69y0wofilZZLcUTfL3NXKCduYIiakRyoBKt9ADdERuRAE3w4/exec';
 /* ============================ */
 
-const APP_VERSION = '2.0.0-phase2';
+const APP_VERSION = '2.5.0-phase2.5';
 const TIMEOUT_MS = 15000;
 
 /* ---------- 保存（使えない端末でも止まらないように） ---------- */
@@ -253,9 +260,10 @@ const S = {
   offline: false,      // 前回のデータで動いているか
   queue: store.get('queue', []),     // 未送信の決済
   timers: store.get('timers', []),   // この端末で動いているタイムカード
+  register: store.get('register', null),   // この端末で開いたレジ（販売形態・売場・レジ名・釣銭準備金）
   adminPin: null,      // 管理者の暗証番号（画面を閉じるまで覚える）
   dept: null, msg: null,
-  reg: null, dash: null, pd: null, lab: null, labList: null, tc: null, vd: null, sales: null, day: null, cl: null, adm: null,
+  reg: null, dash: null, pd: null, lab: null, labList: null, tc: null, vd: null, sales: null, cl: null, adm: null, ro: null,
 };
 const REF = { step2: null };
 
@@ -289,6 +297,18 @@ function prod(id) { return S.init.products.find(p => p.id === id); }
 function memberName(id) { const m = S.init.members.find(x => x.id === id); return m ? m.name : id; }
 function settings() { return S.init.settings; }
 function canOversell() { return settings().allowOversell || settings().practiceMode; }
+/* ---------- 学科（科）・販売形態・レジ ---------- */
+const BOOTH_ALL = '全体';
+function schoolDepts() { return settings().schoolDepts || []; }
+function channels() { return settings().channels || []; }
+function localDate() { const d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+function hasOpenRegister() { const r = S.register; return !!(r && r.date === localDate() && r.status !== '締め済み'); }
+function saveRegister() { store.set('register', S.register); }
+/** この売場で売れる製品か（峰南祭の科のレジでは、その科の製品だけ） */
+function inBooth(p) { const r = S.register; return !r || !r.booth || r.booth === BOOTH_ALL || p.dept === r.booth; }
+function boothProducts() { return S.init.products.filter(inBooth); }
+function registerLabel() { const r = S.register; return r ? r.registerName + '（' + r.channel + (r.booth && r.booth !== BOOTH_ALL ? '・' + r.booth : '') + '）' : ''; }
+
 function note(type, text) { return h('p', { class: 'note ' + type, role: type === 'err' ? 'alert' : 'status' }, text); }
 /** 画面の共通の枠：見出し・もどる・本文 */
 function page(title, onBack, ...kids) {
@@ -408,7 +428,7 @@ function applySync(d) {
   if (d.soldTags) { S.sold = new Set(d.soldTags); S.init.soldTags = d.soldTags; }
   store.set('init', S.init);
   const R = REF.step2;
-  if (R) R.prodGrid.replaceChildren(...S.init.products.map(productButton));
+  if (R) R.prodGrid.replaceChildren(...boothProducts().map(productButton));
 }
 async function refreshStock() {
   try { applySync(await api('GET', 'stock')); } catch (e) { /* 次の決済で確かめられるので無視 */ }
@@ -451,6 +471,9 @@ async function boot() {
     S.init = data; S.offline = false;
     S.sold = new Set(data.soldTags || []);
     store.set('init', data);
+    const local = S.register;
+    S.register = data.register || (local && local.practice && local.date === localDate() ? local : null);
+    saveRegister();
     S.msg = null;
     go('top');
     flushQueue();
@@ -552,11 +575,10 @@ const JOBS = {
   production: { icon: '🔨', label: () => 'つくった かずの きろく', open: () => openProduction() },
   labels: { icon: '🏷', label: () => 'ねふだの いんさつ', open: () => openLabelList() },
   timecard: { icon: '⏱', label: () => 'タイムカード', open: () => openTimecard() },
-  openDay: { icon: '🔓', label: () => 'おみせを あける', open: () => openOpenDay() },
   closing: { icon: '🔒', label: () => 'レジじめ', open: () => openClosing(), when: () => settings().useCashClosing },
 };
 const DEPTS = {
-  '経営': { icon: '🏢', label: () => rb('経営', 'けいえい'), jobs: ['dashboard', 'openDay', 'timecard'],
+  '経営': { icon: '🏢', label: () => rb('経営', 'けいえい'), jobs: ['dashboard', 'timecard'],
     later: ['ぜんたいの ようすを 1がめんで みる', 'ねだんを かえる・ついかで つくる などの けいえいの はんだん', 'れんしゅう もんだい'] },
   '商品企画': { icon: '💡', label: () => [rb('商品', 'しょうひん'), rb('企画', 'きかく')], jobs: ['timecard'],
     later: ['ねだんを かんがえる', '何こ うれば くろじに なるかの けいさん（損益分岐点）', 'うれる かずの よそう', 'れんしゅう もんだい'] },
@@ -566,7 +588,7 @@ const DEPTS = {
     later: ['ざいりょうから 何こ つくれるかの けいさん', 'れんしゅう もんだい'] },
   '販売': { icon: '🛒', label: () => rb('販売', 'はんばい'), jobs: ['register', 'sales', 'void', 'timecard'],
     later: ['こすうと うりあげの しょうごう', 'れんしゅう もんだい'] },
-  '会計・総務': { icon: '🧮', label: () => [rb('会計', 'かいけい'), '・', rb('総務', 'そうむ')], jobs: ['dashboard', 'openDay', 'closing', 'timecard'],
+  '会計・総務': { icon: '🧮', label: () => [rb('会計', 'かいけい'), '・', rb('総務', 'そうむ')], jobs: ['dashboard', 'closing', 'timecard'],
     later: ['けいひの きろく', 'じぶんで けっさんを けいさんする', 'れんしゅう もんだい'] },
 };
 
@@ -629,6 +651,7 @@ function newReg(member) {
   return { step: member ? 2 : 1, member: member, cart: [], segment: null, tendered: 0, txId: null, sending: false, result: null, notice: null, msg: null };
 }
 function openRegister() {
+  if (!hasOpenRegister()) { openRegOpen(); return; }
   const saved = store.get('member', null);
   const member = S.init.members.some(m => m.id === saved) ? saved : null;
   S.reg = newReg(member);
@@ -653,13 +676,85 @@ function regHeader() {
   return [
     h('header', { class: 'bar' },
       back ? backBtn(back, r.sending) : h('span'),
-      h('h1', null, 'レジ'),
+      h('h1', null, 'レジ', h('small', { style: 'display:block;font-size:0.7rem;font-weight:400' }, registerLabel())),
       h('span', { class: 'who' }, r.member ? [rb('担当', 'たんとう'), '：', memberName(r.member)] : '')),
     progressBar(REG_STEPS, Math.min(r.step, 6)),
   ];
 }
 
 VIEWS.register = () => [null, viewStep1, viewStep2, viewStep3, viewStep4, viewStep5, viewStep6][S.reg.step]();
+
+/* ---- レジを開く（販売形態 → 売場 → レジ名と釣銭準備金） ---- */
+function openRegOpen() {
+  const last = store.get('lastRegister', {});
+  S.ro = { step: 1, channel: null, booth: null, name: last.registerName || '', float: settings().floatCash || 0, msg: null, sending: false };
+  if (S.register && S.register.status === '締め済み' && S.register.date === localDate()) {
+    S.ro.msg = { type: 'err', text: 'この たんまつの レジは きょう もう しめて います。つづけて うる ときは、せんせいに レジじめを やりなおして もらって ください。' };
+  }
+  go('regOpen');
+}
+VIEWS.regOpen = () => {
+  const o = S.ro;
+  const chObj = channels().find(c => c.name === o.channel);
+  const split = chObj && chObj.split === '科ごと';
+  const steps = ['はんばいの しゅるい', 'うりば', 'レジの なまえと おかね'];
+  const back = o.step === 1 ? backToDept : () => { o.step = o.step === 3 && !split ? 1 : o.step - 1; o.msg = null; render(); };
+  const head = [h('header', { class: 'bar' }, backBtn(back, o.sending), h('h1', null, '🔓 レジを ひらく'), h('span')), progressBar(steps, o.step)];
+  if (S.offline) return h('div', { class: 'screen' }, ...head, note('err', 'レジを ひらくには つうしんが ひつようです。Wi-Fi に つないで、がめんを よみこみ なおして ください。'));
+  if (o.step === 1) {
+    return h('div', { class: 'screen' }, ...head,
+      o.msg ? note(o.msg.type, o.msg.text) : null,
+      h('h2', null, 'きょうは どこで うりますか？'),
+      h('div', { class: 'grid' }, channels().map(c => h('button', {
+        class: 'btn dept' + (o.channel === c.name ? ' selected' : ''), 'aria-pressed': String(o.channel === c.name),
+        onclick: () => {
+          o.channel = c.name; o.msg = null;
+          if (c.split === '科ごと') { o.step = 2; } else { o.booth = BOOTH_ALL; if (!o.name || /科 \d+$/.test(o.name)) o.name = 'レジ1'; o.step = 3; }
+          render();
+        },
+      }, c.name, h('small', null, c.split === '科ごと' ? '（科ごとの うりば）' : '（1かしょで ぜんぶ うる）')))));
+  }
+  if (o.step === 2) {
+    return h('div', { class: 'screen' }, ...head,
+      h('h2', null, o.channel, '：どの ', rb('科', 'か'), 'の うりば ですか？'),
+      h('div', { class: 'grid' }, schoolDepts().map(d => h('button', {
+        class: 'btn dept' + (o.booth === d ? ' selected' : ''), 'aria-pressed': String(o.booth === d),
+        onclick: () => { o.booth = d; if (!o.name || !o.name.startsWith(d)) o.name = d + ' 1'; o.step = 3; render(); },
+      }, d, h('small', null, 'しょうひん ' + S.init.products.filter(p => p.dept === d).length + 'しゅるい')))),
+      h('p', { class: 'muted' }, 'えらんだ 科の しょうひん だけを うります。ぜんぶの しょうひんを うる レジは「全体」を えらびます。'),
+      h('button', { class: 'btn', onclick: () => { o.booth = BOOTH_ALL; o.name = o.name || 'レジ1'; o.step = 3; render(); } }, '全体（ぜんぶの しょうひん）'));
+  }
+  const nameInput = h('input', { id: 'regname', type: 'text', value: o.name, maxlength: 20, autocomplete: 'off',
+    style: 'font:inherit;font-size:1.3rem;padding:8px 12px;border:3px solid #333;border-radius:10px;width:14em;max-width:100%' });
+  nameInput.addEventListener('input', () => { o.name = nameInput.value.trim(); });
+  return h('div', { class: 'screen' }, ...head,
+    o.msg ? note(o.msg.type, o.msg.text) : null,
+    h('p', { class: 'big' }, o.channel, '　／　うりば：', o.booth),
+    h('div', { class: 'field' }, h('label', { for: 'regname' }, 'レジの なまえ'), nameInput),
+    h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'おなじ うりばに レジが 2だい いじょう ある ときは「1」「2」で わけて ください。レジじめは レジ 1だい ずつ します。'),
+    h('h3', null, rb('釣銭', 'つりせん'), 'の じゅんび（この レジに いれた おかね）'),
+    h('div', { class: 'kv' }, h('div', { class: 'money' }, yen(o.float))),
+    h('div', { class: 'cash' }, [10000, 5000, 1000, 500, 100, 50, 10].map(v => h('button', { class: 'btn sm', onclick: () => { o.float += v; render(); } }, '＋', v.toLocaleString('ja-JP'), '円'))),
+    h('button', { class: 'btn stop', onclick: () => { o.float = 0; render(); } }, '✖ 0円に もどす'),
+    actions(h('button', { class: 'btn ok big', disabled: o.sending || !o.name, onclick: submitRegOpen }, o.sending ? 'おくって います…' : '✓ レジを ひらく')));
+};
+async function submitRegOpen() {
+  const o = S.ro;
+  o.sending = true; o.msg = null; render();
+  try {
+    const res = await api('POST', 'openRegister', { channel: o.channel, booth: o.booth, registerName: o.name, floatCash: o.float, memberId: store.get('member', '') });
+    S.register = Object.assign({}, res.register, { practice: !!res.practice });
+    saveRegister();
+    store.set('lastRegister', { registerName: S.register.registerName });
+    beep(true);
+    o.sending = false;
+    openRegister();
+  } catch (e) {
+    o.sending = false;
+    if (e.code === 'UNAUTHORIZED') return toCodeScreen();
+    o.msg = { type: 'err', text: e.message }; beep(false); render();
+  }
+}
 
 /* ---- 1 担当者 ---- */
 function viewStep1() {
@@ -695,7 +790,7 @@ function viewStep2() {
     notice ? notice.text : 'ねふだの QRコードを よむか、しょうひんの ボタンを おしてください。');
   const camBtn = h('button', { class: 'btn', onclick: toggleCamera }, '📷 カメラで よむ');
   const flipBtn = h('button', { class: 'btn', onclick: flipCamera, hidden: true }, '🔄 カメラを きりかえる');
-  const prodGrid = h('div', { class: 'grid prods' }, S.init.products.map(productButton));
+  const prodGrid = h('div', { class: 'grid prods' }, boothProducts().map(productButton));
   const cartBox = h('div');
   const totalEl = h('span', { class: 'money' });
   const nextBtn = h('button', { class: 'btn go big', onclick: () => goStep(3) }, 'つぎへ ▶');
@@ -751,6 +846,7 @@ function scanFeedback(ok, text) {
 function addToCart(id, tag) {
   const p = prod(id);
   if (!p) { scanFeedback(false, 'この コードは しょうひんに ありません。'); return; }
+  if (!inBooth(p)) { scanFeedback(false, p.name + 'は この うりば（' + S.register.booth + '）の しょうひん では ありません（' + (p.dept || '科なし') + '）。'); return; }
   let line = S.reg.cart.find(l => l.id === id);
   const inCart = line ? line.qty : 0;
   if (!canOversell() && inCart + 1 > p.stock) {
@@ -922,7 +1018,9 @@ function checkoutPayload() {
     const rest = l.qty - l.tags.length;
     if (rest > 0) items.push({ productId: l.id, qty: rest });
   });
-  return { txId: r.txId, memberId: r.member, segment: r.segment, tendered: r.tendered, items: items };
+  const g = S.register || {};
+  return { txId: r.txId, memberId: r.member, segment: r.segment, tendered: r.tendered, items: items,
+    channel: g.channel, booth: g.booth, registerName: g.registerName };
 }
 
 async function submitCheckout() {
@@ -995,6 +1093,11 @@ function handleCheckoutError(e, payload) {
       beep(false); goStep(4); return;
     case 'UNAUTHORIZED':
       toCodeScreen(); return;
+    case 'NO_REGISTER':
+      r.txId = null;
+      S.register = null; saveRegister();
+      openRegOpen(); S.ro.msg = { type: 'err', text: 'レジが ひらかれて いませんでした。レジを ひらいてから、もういちど うって ください（カゴは のこって いません）。' }; render();
+      return;
     case 'BUSY':
       r.msg = { type: 'err', text: 'こみあって います。すこし まって、もういちど「決済する」を おしてください。' };
       beep(false); render(); return;
@@ -1003,6 +1106,11 @@ function handleCheckoutError(e, payload) {
       beep(false);
       if (e.data && e.data.field === 'member') { r.member = null; goStep(1); return; }
       if (e.data && e.data.field === 'segment') { r.segment = null; goStep(3); return; }
+      if (e.data && e.data.field === 'booth') {
+        r.cart = r.cart.filter(l => inBooth(prod(l.id)));
+        r.notice = { type: 'err', text: '✖ ' + e.message + '　その しょうひんを カゴから はずしました。' };
+        goStep(2); return;
+      }
       r.msg = { type: 'err', text: e.message };
       render();
   }
@@ -1064,14 +1172,16 @@ VIEWS.production = () => {
   }
   if (d.step === 2) {
     return h('div', { class: 'screen' }, ...head, h('h2', null, 'どの ', rb('商品', 'しょうひん'), 'を つくりましたか？'),
+      h('p', { class: 'muted' }, 'しょうひんの 下に 科が かいて あります。'),
       h('div', { class: 'grid prods' }, S.init.products.map(p => {
         const ratio = p.target > 0 ? Math.min(1, p.made / p.target) : 0;
         return h('button', {
           class: 'btn prod' + (d.product === p.id ? ' selected' : ''), 'aria-pressed': String(d.product === p.id),
-          onclick: () => { if (d.product !== p.id) { d.made = 0; d.loss = 0; d.reason = ''; d.recordId = null; } d.product = p.id; pdGo(3); },
+          onclick: () => { if (d.product !== p.id) { d.made = 0; d.loss = 0; d.reason = ''; d.recordId = null; d.dept = null; } d.product = p.id; pdGo(3); },
         },
         h('span', { class: 'icon', 'aria-hidden': 'true' }, p.icon || '📦'),
         h('span', { class: 'pname' }, p.name),
+        h('small', null, p.dept || '科なし'),
         p.target > 0 ? [h('small', null, 'つくった ', p.made, ' ／ もくひょう ', p.target),
           h('span', { class: 'meter', 'aria-hidden': 'true' }, h('i', { style: 'width:' + Math.round(ratio * 100) + '%' }))]
           : h('small', null, 'つくった ', p.made, 'こ'));
@@ -1084,10 +1194,10 @@ VIEWS.production = () => {
       counter('できた（よいもの）', d.made, v => { d.made = v; d.recordId = null; render(); }, { name: 'できた かず' }),
       counter('しっぱい（ロス）', d.loss, v => { d.loss = v; d.recordId = null; if (!v) d.reason = ''; render(); }, { name: 'しっぱいの かず' }),
       d.loss > 0 ? [h('h3', null, 'しっぱいの りゆう'), chips(reasons.map(x => [x, x]), d.reason, v => { d.reason = v; render(); }, 'しっぱいの りゆう')] : null,
-      actions(h('button', { class: 'btn go big', disabled: d.made + d.loss === 0, onclick: () => { if (d.dept === null) d.dept = memberGroup(d.member); pdGo(4); } }, 'つぎへ ▶')));
+      actions(h('button', { class: 'btn go big', disabled: d.made + d.loss === 0, onclick: () => { if (d.dept === null) d.dept = (prod(d.product) || {}).dept || ''; pdGo(4); } }, 'つぎへ ▶')));
   }
   if (d.step === 4) {
-    const groups = (S.init.groups || []).map(g => [g, g]).concat([['', 'なし']]);
+    const groups = schoolDepts().map(g => [g, g]).concat([['', 'なし']]);
     const row = (k, v) => [h('dt', null, k), h('dd', null, v)];
     return h('div', { class: 'screen' }, ...head,
       h('h2', null, 'これで きろく しますか？'),
@@ -1097,7 +1207,7 @@ VIEWS.production = () => {
         row('できた かず', h('b', { class: 'money' }, d.made, 'こ')),
         row('しっぱい', d.loss + 'こ' + (d.reason ? '（' + d.reason + '）' : '')),
         row('ねふだ', d.made > 0 ? d.made + 'まい つくります' : 'つくりません')),
-      h('h3', null, 'ねふだに いれる ', rb('部署', 'ぶしょ'), '（つくった はん）'),
+      h('h3', null, 'ねふだに いれる ', rb('部署', 'ぶしょ'), '（つくった ', rb('科', 'か'), '）'),
       chips(groups, d.dept || '', v => { d.dept = v; render(); }, '部署'),
       actions(h('button', { class: 'btn ok big', disabled: d.sending, onclick: submitProduction }, d.sending ? 'おくって います…' : '✓ きろく する')));
   }
@@ -1391,15 +1501,16 @@ function openTimecard() {
 function elapsedMin(t) { return Math.max(1, Math.round((Date.now() - t.start) / 60000)); }
 function hhmm(ms) { const d = new Date(ms); return d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2); }
 
-async function sendTimecard(recordId, member, task, minutes) {
-  return api('POST', 'timecard', { recordId: recordId, memberId: member, task: task, minutes: minutes });
+async function sendTimecard(recordId, member, task, minutes, dept) {
+  return api('POST', 'timecard', { recordId: recordId, memberId: member, task: task, minutes: minutes, dept: dept || '' });
 }
+function memberDept(id) { const m = S.init.members.find(x => x.id === id); return m ? m.dept : ''; }
 async function stopTimer(t) {
   const c = S.tc;
   if (c.sending) return;
   c.sending = t.id; c.msg = null; render();
   try {
-    const res = await sendTimecard(t.id, t.member, t.task, Math.min(720, elapsedMin(t)));
+    const res = await sendTimecard(t.id, t.member, t.task, Math.min(720, elapsedMin(t)), t.dept);
     S.timers = S.timers.filter(x => x.id !== t.id); saveTimers();
     c.msg = { type: 'ok', text: '✓ ' + memberName(t.member) + '：' + t.task + ' ' + res.minutes + 'ふん を きろく しました。' };
     beep(true);
@@ -1425,16 +1536,18 @@ VIEWS.timecard = () => {
   if (c.mode === 'what') {
     return page('⏱ タイムカード', () => { c.mode = 'who'; render(); },
       h('h2', null, memberName(c.member), 'さんは、どの しごとを しますか？'),
-      h('div', { class: 'grid' }, tasks.map(t => h('button', { class: 'btn', onclick: () => { c.task = t; c.mode = 'how'; c.recordId = null; render(); } }, t))));
+      h('div', { class: 'grid' }, tasks.map(t => h('button', { class: 'btn', onclick: () => { c.task = t; c.mode = 'how'; c.recordId = null; c.dept = memberDept(c.member); render(); } }, t))));
   }
   if (c.mode === 'how') {
     return page('⏱ タイムカード', () => { c.mode = 'what'; render(); },
       h('h2', null, memberName(c.member), 'さん：', c.task),
       c.msg ? note(c.msg.type, c.msg.text) : null,
+      h('h3', null, 'どの ', rb('科', 'か'), 'の しごと ですか？'),
+      chips(schoolDepts().map(d => [d, d === memberDept(c.member) ? d + '（じぶんの 科）' : d]), c.dept, v => { c.dept = v; render(); }, '科'),
       h('div', { class: 'panel' },
         h('h3', null, 'いまから はじめる'),
         h('button', { class: 'btn go big', onclick: () => {
-          S.timers.push({ id: uuid(), member: c.member, task: c.task, start: Date.now() }); saveTimers();
+          S.timers.push({ id: uuid(), member: c.member, task: c.task, dept: c.dept, start: Date.now() }); saveTimers();
           c.msg = { type: 'ok', text: '✓ ' + memberName(c.member) + 'さんの ' + c.task + ' を はじめました（' + hhmm(Date.now()) + '）。おわったら「おわる」を おしてください。' };
           c.mode = 'list'; beep(true); render();
         } }, '▶ はじめる')),
@@ -1445,7 +1558,7 @@ VIEWS.timecard = () => {
           if (!c.recordId) c.recordId = uuid();
           c.sending = 'manual'; c.msg = null; render();
           try {
-            const res = await sendTimecard(c.recordId, c.member, c.task, c.minutes);
+            const res = await sendTimecard(c.recordId, c.member, c.task, c.minutes, c.dept);
             c.msg = { type: 'ok', text: '✓ ' + memberName(c.member) + '：' + c.task + ' ' + res.minutes + 'ふん を きろく しました。' };
             c.mode = 'list'; c.recordId = null; beep(true);
           } catch (e) {
@@ -1461,7 +1574,7 @@ VIEWS.timecard = () => {
     h('h2', null, 'いま はたらいて いる ひと（この たんまつ）'),
     S.timers.length
       ? h('div', { class: 'list' }, S.timers.map(t => h('div', { class: 'timer' },
-        h('div', null, h('b', null, memberName(t.member)), '　', t.task, '　', hhmm(t.start), 'から　', h('b', null, elapsedMin(t), 'ふん')),
+        h('div', null, h('b', null, memberName(t.member)), '　', t.task, t.dept ? '（' + t.dept + '）' : '', '　', hhmm(t.start), 'から　', h('b', null, elapsedMin(t), 'ふん')),
         h('button', { class: 'btn ok', disabled: c.sending === t.id, onclick: () => stopTimer(t) }, c.sending === t.id ? 'おくって います…' : '⏹ おわる'))))
       : h('p', { class: 'muted' }, 'いまは だれも はたらいて いません。'),
     h('p', { class: 'muted', style: 'font-size:0.85rem' }, '「はじめる」は この たんまつに おぼえます。おわる ときも おなじ たんまつで おしてください。'),
@@ -1514,6 +1627,7 @@ VIEWS.void = () => {
       v.msg ? note(v.msg.type, v.msg.text) : null,
       h('dl', { class: 'sum' },
         h('dt', null, 'じこく'), h('dd', null, t.time),
+        t.registerName ? [h('dt', null, 'レジ'), h('dd', null, t.registerName, t.channel ? '（' + t.channel + '）' : '')] : null,
         h('dt', null, rb('担当者', 'たんとうしゃ')), h('dd', null, t.memberName),
         h('dt', null, 'しょうひん'), h('dd', null, t.items.map(i => i.name + '×' + i.qty).join('、')),
         h('dt', null, rb('合計', 'ごうけい')), h('dd', null, h('b', { class: 'money' }, yen(t.total)))),
@@ -1526,7 +1640,7 @@ VIEWS.void = () => {
       : !v.list.length ? h('p', { class: 'muted' }, 'まだ とりひきが ありません。')
         : h('ul', { class: 'list' }, v.list.map(t => h('li', null, h('button', {
           class: 'btn', disabled: t.voided, onclick: () => { v.sel = t; v.msg = null; render(); },
-        }, h('b', null, t.time), '　', t.memberName, '　', t.items.map(i => i.name + '×' + i.qty).join('、'), '　', h('b', null, yen(t.total)),
+        }, h('b', null, t.time), t.registerName ? h('small', { class: 'muted' }, '　［' + t.registerName + '］') : null, '　', t.memberName, '　', t.items.map(i => i.name + '×' + i.qty).join('、'), '　', h('b', null, yen(t.total)),
         t.voided ? h('span', { class: 'tag-voided' }, '　（とりけし ずみ）') : null, t.practice ? '　✏れんしゅう' : ''))));
   return page(['↩ ', rb('取消', 'とりけし')], backToDept,
     h('h2', null, 'とりけす とりひきを えらんで ください（さいきんの 20けん）'), body, versionLine());
@@ -1551,134 +1665,124 @@ async function submitVoid() {
 }
 
 /* =====================================================================
- * 画面：販売実績（担当者別・商品別。順位は付けない）
+ * 画面：販売実績（科別・販売形態別・レジ別・担当者別・商品別。順位は付けない）
  * ===================================================================== */
-async function openSales(scope) {
-  S.sales = { scope: scope || (S.sales && S.sales.scope) || 'today', loading: true };
+async function openSales(scope, channel) {
+  const prev = S.sales || {};
+  S.sales = { scope: scope || prev.scope || 'today', channel: channel !== undefined ? channel : (prev.channel || ''), loading: true };
   go('sales');
-  try { S.sales.data = await api('GET', 'sales', { scope: S.sales.scope }); }
+  try { S.sales.data = await api('GET', 'sales', { scope: S.sales.scope, channel: S.sales.channel }); }
   catch (e) { if (e.code === 'UNAUTHORIZED') return toCodeScreen(); S.sales.error = e; }
   S.sales.loading = false;
   if (S.screen === 'sales') render();
 }
 VIEWS.sales = () => {
   const s = S.sales;
-  const head = chips([['today', 'きょう'], ['all', 'ぜんぶ']], s.scope, v => openSales(v), 'きかん');
+  const head = [
+    chips([['today', 'きょう'], ['all', 'ぜんぶ']], s.scope, v => openSales(v, s.channel), 'きかん'),
+    h('div', { style: 'margin-top:8px' }, chips([['', 'すべての はんばい']].concat(channels().map(c => [c.name, c.name])), s.channel, v => openSales(s.scope, v), 'はんばいの しゅるい')),
+  ];
   if (s.loading) return page('📋 うれた きろく', backToDept, head, h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…'));
   if (s.error) return page('📋 うれた きろく', backToDept, head, note('err', s.error.message));
   const d = s.data;
   const num = v => h('td', { class: 'num' }, v);
+  const tbl = (cols, rows) => h('table', { class: 'tbl' },
+    h('thead', null, h('tr', null, cols.map((c, i) => h('th', { class: i ? 'num' : null }, c)))),
+    h('tbody', null, rows));
   return page('📋 うれた きろく', backToDept, head,
-    h('p', { class: 'muted' }, s.scope === 'today' ? d.date + ' の きろく' : 'これまで ぜんぶの きろく', '（とりけしは さしひいて います）'),
+    h('p', { class: 'muted' }, s.scope === 'today' ? d.date + ' の きろく' : 'これまで ぜんぶの きろく', s.channel ? '（' + s.channel + ' だけ）' : '', '。とりけしは さしひいて います。'),
     h('div', { class: 'sum3' },
       h('div', { class: 'kv' }, h('div', { class: 'k' }, rb('取引', 'とりひき'), 'の かず'), h('div', { class: 'money' }, d.total.txCount, 'けん')),
       h('div', { class: 'kv' }, h('div', { class: 'k' }, 'うれた こすう'), h('div', { class: 'money' }, d.total.qty, 'こ')),
       h('div', { class: 'kv' }, h('div', { class: 'k' }, rb('売上', 'うりあげ')), h('div', { class: 'money' }, yen(d.total.sales)))),
+    h('h3', null, rb('科', 'か'), 'ごと'),
+    tbl([rb('科', 'か'), '取引', 'こすう', '売上'], d.depts.map(x => h('tr', null, h('td', null, x.label), num(x.txCount + 'けん'), num(x.qty + 'こ'), num(yen(x.sales))))),
+    !s.channel && d.channels.length > 1 ? [h('h3', null, 'はんばいの しゅるい ごと'),
+      tbl(['はんばい', '取引', 'こすう', '売上'], d.channels.map(x => h('tr', null, h('td', null, x.label), num(x.txCount + 'けん'), num(x.qty + 'こ'), num(yen(x.sales)))))] : null,
+    h('h3', null, 'レジ ごと'),
+    tbl(['レジ', '取引', 'こすう', '売上'], d.registers.map(x => h('tr', null,
+      h('td', null, s.scope === 'all' ? x.date.slice(5).replace('-', '/') + '　' : '', x.label, h('small', { class: 'muted' }, '（', x.channel, x.booth !== BOOTH_ALL ? '・' + x.booth : '', '）')),
+      num(x.txCount + 'けん'), num(x.qty + 'こ'), num(yen(x.sales))))),
     h('h3', null, 'だれが うったか（ばんごう じゅん）'),
-    h('table', { class: 'tbl' },
-      h('thead', null, h('tr', null, h('th', null, rb('担当者', 'たんとうしゃ')), h('th', { class: 'num' }, '取引'), h('th', { class: 'num' }, 'こすう'), h('th', { class: 'num' }, '売上'))),
-      h('tbody', null, d.members.map(m => h('tr', null, h('td', null, m.name), num(m.txCount + 'けん'), num(m.qty + 'こ'), num(yen(m.sales)))))),
+    tbl([rb('担当者', 'たんとうしゃ'), '取引', 'こすう', '売上'], d.members.map(m => h('tr', null, h('td', null, m.label), num(m.txCount + 'けん'), num(m.qty + 'こ'), num(yen(m.sales))))),
     h('h3', null, 'なにが うれたか'),
-    h('table', { class: 'tbl' },
-      h('thead', null, h('tr', null, h('th', null, rb('商品', 'しょうひん')), h('th', { class: 'num' }, 'こすう'), h('th', { class: 'num' }, '売上'))),
-      h('tbody', null, d.products.map(p => h('tr', null, h('td', null, p.icon ? p.icon + ' ' : '', p.name), num(p.qty + 'こ'), num(yen(p.sales)))))),
+    tbl([rb('商品', 'しょうひん'), 'こすう', '売上'], d.products.map(p => h('tr', null, h('td', null, p.icon ? p.icon + ' ' : '', p.label, h('small', { class: 'muted' }, '（', p.dept || '科なし', '）')), num(p.qty + 'こ'), num(yen(p.sales))))),
     versionLine());
 };
 
 /* =====================================================================
- * 画面：お店をあける（釣銭準備金と区分）
- * ===================================================================== */
-async function loadDay(date) {
-  try { return await api('GET', 'day', date ? { date: date } : {}); }
-  catch (e) { if (e.code === 'UNAUTHORIZED') toCodeScreen(); throw e; }
-}
-async function openOpenDay() {
-  S.day = { loading: true, msg: null };
-  go('openDay');
-  try {
-    const d = await loadDay();
-    S.day = { data: d, kind: d.kind, float: d.floatCash !== null ? d.floatCash : d.defaultFloat, msg: null, sending: false };
-  } catch (e) { S.day = { error: e }; }
-  if (S.screen === 'openDay') render();
-}
-VIEWS.openDay = () => {
-  const s = S.day;
-  if (s.loading) return page('🔓 おみせを あける', backToDept, h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…'));
-  if (s.error) return page('🔓 おみせを あける', backToDept, note('err', s.error.message), h('button', { class: 'btn go', onclick: openOpenDay }, '🔄 もういちど'));
-  const d = s.data;
-  if (d.status === '締め済み') {
-    return page('🔓 おみせを あける', backToDept, note('', 'きょう（' + d.date + '）は もう レジじめが おわっています。'), versionLine());
-  }
-  const add = v => { s.float += v; render(); };
-  return page('🔓 おみせを あける', backToDept,
-    s.msg ? note(s.msg.type, s.msg.text) : null,
-    h('p', null, d.date, '　', d.exists ? (d.openedAt ? d.openedAt + ' から ' : '') + 'えいぎょう ちゅう' : 'まだ あけて いません'),
-    d.practice ? note('', '✏ れんしゅう ちゅう なので、きろく は しません。') : null,
-    h('h3', null, 'きょうの しゅるい'),
-    chips((settings().dayKinds || ['通常', '一斉販売']).map(k => [k, k === '通常' ? 'ふだん（通常）' : 'たくさん うる日（一斉販売）']), s.kind, v => { s.kind = v; render(); }, '営業日の区分'),
-    h('h3', null, rb('釣銭', 'つりせん'), 'の じゅんび（レジに さいしょに いれる おかね）'),
-    h('div', { class: 'kv' }, h('div', { class: 'money' }, yen(s.float))),
-    h('div', { class: 'cash' }, [10000, 5000, 1000, 500, 100, 50, 10].map(v => h('button', { class: 'btn sm', onclick: () => add(v) }, '＋', v.toLocaleString('ja-JP'), '円'))),
-    h('button', { class: 'btn stop', onclick: () => { s.float = 0; render(); } }, '✖ 0円に もどす'),
-    actions(h('button', { class: 'btn ok big', disabled: s.sending, onclick: submitOpenDay }, s.sending ? 'おくって います…' : '✓ おみせを あける')));
-};
-async function submitOpenDay() {
-  const s = S.day;
-  s.sending = true; s.msg = null; render();
-  try {
-    const d = await api('POST', 'openDay', { floatCash: s.float, kind: s.kind, memberId: store.get('member', '') });
-    s.data = d;
-    s.msg = { type: 'ok', text: d.practice ? '✓ れんしゅう：おみせを あけました（きろく しません）' : '✓ おみせを あけました（つりせん ' + yen(d.floatCash) + '・' + d.kind + '）' };
-    beep(true);
-  } catch (e) { s.msg = { type: 'err', text: e.message }; beep(false); }
-  s.sending = false; render();
-}
-
-/* =====================================================================
- * 画面：レジ締め（金種ごとに数えて、記録と比べる）
+ * 画面：レジ締め（レジ1台ごとに、金種ごとに数えて記録と比べる）
  * ===================================================================== */
 async function openClosing(date) {
-  S.cl = { loading: true, counts: {}, pin: '', msg: null, result: null, date: date || null };
+  S.cl = { loading: true, counts: {}, pin: '', msg: null, result: null, date: date || null, target: null };
   go('closing');
-  try { S.cl.data = await loadDay(date); S.cl.date = S.cl.data.date; } catch (e) { S.cl.error = e; }
+  try {
+    S.cl.data = await api('GET', 'day', date ? { date: date } : {});
+    S.cl.date = S.cl.data.date;
+  } catch (e) { if (e.code === 'UNAUTHORIZED') return toCodeScreen(); S.cl.error = e; }
   S.cl.loading = false;
   if (S.screen === 'closing') render();
 }
 function countTotal(counts) { return DENOM_ALL.reduce((a, v) => a + v * (counts[v] || 0), 0); }
+function regLine(r) { return [h('b', null, r.registerName), '　', r.channel, r.booth !== BOOTH_ALL ? '・' + r.booth : '']; }
 VIEWS.closing = () => {
   const c = S.cl;
   const title = '🔒 レジじめ';
   if (c.loading) return page(title, backToDept, h('p', { class: 'big', role: 'status' }, 'よみこみ ちゅう…'));
   if (c.error) return page(title, backToDept, note('err', c.error.message), h('button', { class: 'btn go', onclick: () => openClosing(c.date) }, '🔄 もういちど'));
   const d = c.data;
+  const toList = () => openClosing(c.date);
+
+  // 結果
   if (c.result) {
     const r = c.result;
     const verdict = r.diff === 0 ? h('p', { class: 'big', style: 'color:var(--ok)' }, '✓ ぴったり あいました')
       : r.diff > 0 ? h('p', { class: 'big', style: 'color:var(--stop)' }, '▲ げんきんが ', yen(r.diff), ' おおい')
         : h('p', { class: 'big', style: 'color:var(--stop)' }, '▲ げんきんが ', yen(-r.diff), ' たりない');
-    return page(title, backToDept,
+    return page(title, toList,
       h('div', { class: 'done-box', role: 'status' },
+        h('p', null, regLine(r)),
         r.practice ? note('', '✏ れんしゅう なので きろく していません') : null,
         verdict,
         h('dl', { class: 'sum', style: 'text-align:left' },
           h('dt', null, rb('釣銭', 'つりせん'), 'じゅんび'), h('dd', null, yen(r.floatCash)),
-          h('dt', null, '＋ ', rb('売上', 'うりあげ'), '（きろく）'), h('dd', null, yen(r.sales)),
+          h('dt', null, '＋ ', rb('売上', 'うりあげ'), '（この レジの きろく）'), h('dd', null, yen(r.sales)),
           h('dt', null, '＝ レジに ある はずの おかね'), h('dd', null, h('b', null, yen(r.expected))),
           h('dt', null, 'かぞえた おかね'), h('dd', null, h('b', null, yen(r.actual))),
           h('dt', null, rb('過不足', 'かぶそく')), h('dd', null, h('b', { class: r.diff ? 'neg' : null }, (r.diff > 0 ? '＋' : '') + yen(r.diff))))),
       r.diff !== 0 ? h('p', null, 'あわない ときは、もういちど かぞえて みましょう。おつりの わたしまちがい、きろくの わすれ、とりけしの わすれ が ないかも たしかめます。') : null,
-      actions(h('button', { class: 'btn', onclick: () => openClosing(c.date) }, '🔄 かぞえなおす'), h('button', { class: 'btn go big', onclick: backToDept }, 'おわる')));
+      actions(h('button', { class: 'btn', onclick: () => { c.result = null; c.counts = {}; render(); } }, '🔄 かぞえなおす'), h('button', { class: 'btn go big', onclick: toList }, 'レジの いちらんへ')));
   }
-  const dateInput = h('input', { type: 'date', value: c.date, id: 'cl-date' });
-  dateInput.addEventListener('change', () => { if (dateInput.value) openClosing(dateInput.value); });
+
+  // レジの一覧
+  if (!c.target) {
+    const dateInput = h('input', { type: 'date', value: c.date, id: 'cl-date' });
+    dateInput.addEventListener('change', () => { if (dateInput.value) openClosing(dateInput.value); });
+    return page(title, backToDept,
+      h('div', { class: 'field' }, h('label', { for: 'cl-date' }, 'ひづけ'), dateInput),
+      d.practice ? note('', '✏ れんしゅう ちゅう なので、レジじめの けっかは きろく しません。') : null,
+      !d.registers.length ? note('', 'この日に ひらいた レジは ありません。') : [
+        h('h2', null, 'しめる レジを えらんで ください（レジ 1だい ずつ）'),
+        d.allClosed ? note('ok', '✓ この日の レジは ぜんぶ しめ おわりました。') : null,
+        h('ul', { class: 'list' }, d.registers.map(r => h('li', null, h('button', { class: 'btn', onclick: () => { c.target = r; c.counts = {}; c.msg = null; render(); } },
+          regLine(r), '　',
+          r.status === '締め済み'
+            ? h('span', { style: 'color:var(--ok)' }, '✓ しめずみ', r.closing ? '（' + (r.closing.diff === 0 ? 'ぴったり' : 'かぶそく ' + yen(r.closing.diff)) + '）' : '')
+            : h('span', { class: 'neg' }, '● まだ'),
+          r.afterClose ? h('span', { class: 'neg' }, '　⚠ しめたあとの とりひき ', r.afterClose, 'けん') : null)))),
+      ],
+      versionLine());
+  }
+
+  // 1台を数える
+  const r = c.target;
   const total = countTotal(c.counts);
-  return page(title, backToDept,
-    h('div', { class: 'field' }, h('label', { for: 'cl-date' }, 'えいぎょう日'), dateInput,
-      h('span', null, d.status ? '（' + d.status + (d.closedAt ? ' ' + d.closedAt : '') + '）' : '（まだ きろく なし）')),
-    d.closing ? note('', 'この日は ' + (d.closedAt || '') + ' に レジじめ ずみ です（かぶそく ' + yen(d.closing.diff) + '）。もういちど おこなうと、あたらしい けっかを ただしい ものに します。') : null,
-    d.afterClose ? note('err', 'レジじめの あとの とりひきが ' + d.afterClose + 'けん あります。もういちど レジじめを して ください。') : null,
+  return page(title, () => { c.target = null; render(); },
+    h('p', { class: 'big' }, regLine(r)),
+    r.status === '締め済み' ? note('', 'この レジは ' + r.closedAt + ' に しめずみ です。もういちど おこなうと、あたらしい けっかを ただしい ものに します。') : null,
+    r.afterClose ? note('err', 'レジじめの あとの とりひきが ' + r.afterClose + 'けん あります。もういちど レジじめを して ください。') : null,
     c.msg ? note(c.msg.type, c.msg.text) : null,
-    h('h2', null, 'レジの なかの おかねを、しゅるい ごとに かぞえて ください'),
+    h('h2', null, 'この レジの なかの おかねを、しゅるい ごとに かぞえて ください'),
     h('div', { class: 'denoms' }, DENOM_ALL.map(v => {
       const n = c.counts[v] || 0;
       const input = h('input', { type: 'number', min: 0, max: 9999, inputmode: 'numeric', value: n, 'aria-label': v + '円の まいすう' });
@@ -1700,8 +1804,9 @@ async function submitClosing() {
   if (!pin) { c.msg = { type: 'err', text: 'あんしょう ばんごうを いれて ください。' }; render(); return; }
   c.sending = true; c.msg = null; render();
   try {
-    c.result = await api('POST', 'closing', { date: c.date, counts: c.counts, adminPin: pin, memberId: store.get('member', '') });
+    c.result = await api('POST', 'closing', { date: c.date, registerDevice: c.target.deviceId, counts: c.counts, adminPin: pin, memberId: store.get('member', '') });
     S.adminPin = pin; beep(true);
+    if (S.register && c.target.deviceId === S.deviceId && c.date === S.register.date && !c.result.practice) { S.register.status = '締め済み'; saveRegister(); }
   } catch (e) {
     if (e.code === 'UNAUTHORIZED') return toCodeScreen();
     forgetPinIfBad(e);
@@ -1785,6 +1890,12 @@ VIEWS.admin = () => {
       failed.length ? h('p', { class: 'muted', style: 'font-size:0.85rem' }, '「おくれません」は、たんとうしゃや しょうひんが けされた などで うけつけられなかった ものです。すてる まえに、かみに かきうつして ください。') : null),
 
     h('div', { class: 'panel' },
+      h('h3', null, 'この たんまつの レジ'),
+      hasOpenRegister() ? h('p', null, registerLabel(), '　', rb('釣銭', 'つりせん'), ' ', yen(S.register.floatCash || 0), '　', S.register.status) : h('p', { class: 'muted' }, 'きょうは まだ ひらいて いません。'),
+      h('button', { class: 'btn', onclick: () => { openRegOpen(); } }, '🔓 レジを ひらきなおす（うりばや なまえを かえる）'),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'うりばを まちがえた ときに つかいます。しめた レジは ひらきなおせません。')),
+
+    h('div', { class: 'panel' },
       h('h3', null, 'システムが つかえない ときの 手書き用紙'),
       h('button', { class: 'btn', onclick: printPaperForm }, '🖨 手書きの 売上きろく用紙を いんさつ'),
       h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'あとで、かんりしゃが レジの がめんで 入力して ください。')),
@@ -1850,8 +1961,19 @@ VIEWS.dashboard = () => {
       h('p', { class: 'note err', role: 'alert' }, S.dash.error.message),
       h('button', { class: 'btn go', onclick: openDashboard }, '🔄 もういちど'));
   }
-  const d = S.dash.data, m = d.metrics;
+  const d = S.dash.data;
+  const sel = S.dash.dept || '';
+  const selDept = sel ? (d.depts || []).find(x => x.dept === sel) : null;
+  const m = selDept ? selDept.metrics : d.metrics;
   const sold = d.basis === 'sold';
+  const deptChips = chips([['', 'ぜんたい']].concat((d.depts || []).map(x => [x.dept, x.dept])), sel, v => { S.dash.dept = v; render(); }, '科');
+  const num = v => h('td', { class: 'num' }, yenNode(v));
+  const deptTable = (d.depts || []).length ? h('div', { style: 'overflow-x:auto' }, h('table', { class: 'tbl' },
+    h('thead', null, h('tr', null, h('th', null, rb('科', 'か')), ['売上高', '材料費', '人件費', '経費', '営業利益'].map(t => h('th', { class: 'num' }, t)))),
+    h('tbody', null,
+      d.depts.map(x => h('tr', null, h('td', null, x.dept), num(x.metrics.sales), num(x.metrics.materialCost), num(x.metrics.laborCost), num(x.metrics.expenses), h('td', { class: 'num' }, h('b', null, yenNode(x.metrics.operatingProfit))))),
+      h('tr', null, h('td', null, '共通費（科に わけない けいひ）'), h('td'), h('td'), h('td'), num(d.commonExpenses), num(-d.commonExpenses)),
+      h('tr', { style: 'border-top:3px double #333' }, h('td', null, h('b', null, 'ぜんたい')), num(d.metrics.sales), num(d.metrics.materialCost), num(d.metrics.laborCost), num(d.metrics.expenses), h('td', { class: 'num' }, h('b', null, yenNode(d.metrics.operatingProfit))))))) : null;
   const materialDetail = h('ul', { class: 'pl-detail' },
     h('li', null, 'うれた ぶん：', yen(m.soldCost)),
     h('li', null, 'うれのこり：', yen(m.leftoverCost), sold ? '（ざいこ として のこるので、ふくめて いません）' : '（ふくめて います）'),
@@ -1866,7 +1988,9 @@ VIEWS.dashboard = () => {
 
   return h('div', { class: 'screen' }, head,
     h('p', { class: 'muted' }, 'さいごに けいさん した じこく：', d.updatedAt),
-    h('div', { class: 'pl' },
+    deptChips,
+    selDept ? note('', sel + ' の けっさん です。うりあげと ざいりょうひは この科の しょうひん、じんけんひは この科の タイムカード、けいひは この科の けいひ です。共通費（' + yen(d.commonExpenses) + '）は ふくみません。') : null,
+    h('div', { class: 'pl', style: 'margin-top:10px' },
       plRow('', rb('売上高', 'うりあげだか'), '（おきゃくさんから もらった おかねの ごうけい）', m.sales),
       plRow('－', rb('材料費', 'ざいりょうひ'), '（しょうひんを つくるのに つかった ざいりょうの おかね）', m.materialCost, materialDetail),
       plRow('－', [rb('仮想', 'かそう'), rb('人件費', 'じんけんひ')], '（みんなが はたらいた じかんを、おきゅうりょうに なおした もの）', m.laborCost, laborDetail),
@@ -1876,6 +2000,8 @@ VIEWS.dashboard = () => {
     h('h3', null, 'かずの まとめ'),
     h('div', { class: 'counts' },
       cnt('つくった かず', m.madeQty), cnt('うれた かず', m.soldQty), cnt('うれのこり', m.leftoverQty), cnt('しっぱい（ロス）', m.lossQty)),
+    deptTable ? [h('h3', null, rb('科', 'か'), 'ごとの くらべ'), deptTable,
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'ぜんたいの えいぎょうりえき ＝ 科ごとの えいぎょうりえきの ごうけい － 共通費')] : null,
     versionLine());
 };
 
