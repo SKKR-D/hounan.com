@@ -327,7 +327,7 @@ li.card { background: #fff; border: 2px solid var(--line); border-radius: 12px; 
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1wik8mNABw63NCTB69y0wofilZZLcUTfL3NXKCduYIiakRyoBKt9ADdERuRAE3w4/exec';
 /* ============================ */
 
-const APP_VERSION = '4.2.0-quick';
+const APP_VERSION = '4.3.0-quick';
 const TIMEOUT_MS = 15000;
 
 /* ---------- 保存（使えない端末でも止まらないように） ---------- */
@@ -2119,6 +2119,8 @@ VIEWS.admin = () => {
       h('button', { class: 'btn', onclick: printPaperForm }, '🖨 手書きの 売上きろく用紙を いんさつ'),
       h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'あとで、かんりしゃが レジの がめんで 入力して ください。')),
 
+    resetPanel(a, waiting.length),
+
     h('div', { class: 'panel' },
       h('h3', null, 'そのほか'),
       h('ul', null,
@@ -2129,6 +2131,55 @@ VIEWS.admin = () => {
 
     actions(h('button', { class: 'btn stop', onclick: () => { S.adminPin = null; go('hub'); } }, '🔒 かんりを おわる')));
 };
+
+/** 本番データのリセット（練習・説明会のあとに）。バックアップしてから、売上などの記録だけを けす */
+const RESET_WORD = 'リセット';
+function resetPanel(a, waitingCount) {
+  const r = a.reset || (a.reset = { open: false, word: '', drills: false });
+  const head = h('h3', null, '本番データを リセット（練習や説明会の あとに）');
+  if (r.done) {
+    return h('div', { class: 'panel' }, head,
+      note('ok', '✓ リセット しました。けす まえの データは、グーグルドライブの「販売DX_バックアップ」に「' + r.done.backup + '」として のこして あります。'),
+      h('p', null, 'けした ぎょうすう：', Object.keys(r.done.removed).map(k => k + ' ' + r.done.removed[k] + '行').join('、')),
+      h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'ほかの たんまつ（レジ）は、がめんを よみこみ なおして から つかって ください。'),
+      h('button', { class: 'btn', onclick: () => { a.reset = null; render(); } }, 'とじる'));
+  }
+  if (!r.open) {
+    return h('div', { class: 'panel' }, head,
+      h('p', null, '練習モードに しないで ためしに つかった ときに、売上・製造・タイムカード などの 記録を まとめて けします。'),
+      h('button', { class: 'btn stop', onclick: () => { r.open = true; render(); } }, '🧹 リセットの じゅんびを する'));
+  }
+  const word = h('input', { type: 'text', value: r.word, autocomplete: 'off', 'aria-label': 'かくにんの ことば', 'data-raw': '1', placeholder: RESET_WORD, style: 'font-size:1.1rem;padding:8px 10px;width:12em;max-width:100%;border:2px solid var(--line);border-radius:8px' });
+  word.addEventListener('input', () => { r.word = word.value; });
+  const drills = h('input', { type: 'checkbox', checked: r.drills });
+  drills.addEventListener('change', () => { r.drills = drills.checked; });
+  return h('div', { class: 'panel reset' }, head,
+    h('table', { class: 'tbl' },
+      h('tr', null, h('th', { style: 'white-space:nowrap' }, 'けす もの'), h('td', null, '売上（とりひき）・取消、製造・ロス、タイムカード、経費、予想と ふりかえり、レジじめ、レジを ひらいた きろく（営業日）、棚卸')),
+      h('tr', null, h('th', { style: 'white-space:nowrap' }, 'のこす もの'), h('td', null, '商品・メンバー・設定（対象レベル・部門など）・材料の 入出庫・操作ログ。店舗コードと 暗証番号も そのまま'))),
+    h('label', { class: 'row', style: 'gap:8px;align-items:center' }, drills, '練習問題の 記録（12_練習記録）も けす'),
+    waitingCount ? note('err', 'この たんまつに 未送信の とりひきが ' + waitingCount + 'けん あります。先に おくるか、すてて ください。') : null,
+    note('', '⚠ リセットする まえに：ほかの たんまつ（レジ）にも 未送信の とりひきが ないか、［かんり］で たしかめて ください。リセットの あとに おくられた とりひきは、新しい 記録として のこります。'),
+    h('p', null, 'さいしょに スプレッドシートを まるごと バックアップ（グーグルドライブに コピー）して から けします。バックアップが できない ときは、けしません。'),
+    h('p', null, 'たしかめるため、「', h('b', null, RESET_WORD), '」と 入力して ください：'),
+    word,
+    h('div', { class: 'row', style: 'margin-top:10px' },
+      h('button', { class: 'btn danger', disabled: a.sending, onclick: () => submitReset(a) }, a.sending ? 'バックアップ して います…' : '🧹 バックアップ して リセット する'),
+      h('button', { class: 'btn', disabled: a.sending, onclick: () => { a.reset = null; render(); } }, 'やめる')));
+}
+async function submitReset(a) {
+  const r = a.reset;
+  if ((r.word || '').trim() !== RESET_WORD) { a.msg = { type: 'err', text: 'かくにんの ことば「' + RESET_WORD + '」を 入れて ください。' }; render(); return; }
+  if (S.queue.some(q => q.status === 'waiting')) { a.msg = { type: 'err', text: 'この たんまつに 未送信の とりひきが あります。先に おくるか、すてて ください。' }; render(); return; }
+  const res = await adminOp('resetData', { confirm: r.word.trim(), includeDrills: !!r.drills });
+  if (!res) return;
+  // この たんまつの レジ・つかった ねふだの 記録も けす（営業日の きろくが なくなるため）
+  S.register = null; saveRegister();
+  await reloadInit();
+  a.reset = { done: res };
+  a.msg = { type: 'ok', text: '✓ 本番データを リセット しました。' };
+  beep(true); render();
+}
 
 /** 手書きの売上記録用紙（A4・25行） */
 function printPaperForm() {
