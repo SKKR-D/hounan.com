@@ -251,6 +251,12 @@ table.tbl td.num, table.tbl th.num { white-space: nowrap; }
   .qprods .btn { min-height: 40px; flex-direction: row; gap: 6px; }
   .qleft .scanmsg { -webkit-line-clamp: 1; }
 }
+.qbar { position: relative; }
+.cammenu { position: absolute; right: 8px; top: calc(100% + 4px); z-index: 30; width: min(340px, calc(100vw - 16px)); max-height: 70vh; overflow-y: auto; background: #fff; border: 2px solid #333; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
+.cammenu[hidden] { display: none; }
+.cammenu .btn { justify-content: flex-start; text-align: left; min-height: 48px; flex-wrap: wrap; }
+.cammenu .btn small { font-weight: 400; font-size: 0.8rem; white-space: normal; display: block; width: 100%; }
+.cammenu .btn { white-space: normal; }
 ul.cards { list-style: none; padding: 0; display: grid; gap: 12px; }
 .drill-q { font-size: 1.35rem; font-weight: 700; line-height: 1.7; background: #fff; border: 2px solid var(--line); border-radius: 12px; padding: 14px 18px; }
 .drill-ans { display: flex; align-items: baseline; gap: 8px; font-size: 1.4rem; font-weight: 800; margin: 10px 0; }
@@ -321,7 +327,7 @@ li.card { background: #fff; border: 2px solid var(--line); border-radius: 12px; 
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1wik8mNABw63NCTB69y0wofilZZLcUTfL3NXKCduYIiakRyoBKt9ADdERuRAE3w4/exec';
 /* ============================ */
 
-const APP_VERSION = '4.1.0-quick';
+const APP_VERSION = '4.2.0-quick';
 const TIMEOUT_MS = 15000;
 
 /* ---------- 保存（使えない端末でも止まらないように） ---------- */
@@ -1069,8 +1075,19 @@ async function toggleCamera() {
   await startCamera();
 }
 function camRefs() { return REF.q || REF.step2; }
+/* カメラの えらびかた：外側（うしろ）・内側（まえ）・USBカメラ（端末に つないだ カメラ）・USBリーダー（カメラを使わない）。端末ごとに覚える */
+let camChoice = store.get('camChoice', { kind: 'environment' });
+function camConfig() { return camChoice.kind === 'device' && camChoice.id ? camChoice.id : { facingMode: camChoice.kind === 'user' ? 'user' : 'environment' }; }
+function camLabel() {
+  return { environment: '📷 外側', user: '🤳 内側', device: '🔌 USBカメラ', reader: '⌨ USBリーダー', off: '⏹ カメラ なし' }[camChoice.kind] || '📷 カメラ';
+}
+function setCamChoice(c) { camChoice = c; store.set('camChoice', c); }
 async function startCamera() {
   const R = camRefs();
+  if (camChoice.kind === 'reader' || camChoice.kind === 'off') {
+    if (REF.q) { REF.q.msg.className = 'scanmsg'; REF.q.msg.textContent = camChoice.kind === 'reader' ? '⌨ USBリーダーで ねふだを よんで ください。' : '⏹ カメラは とめて います。しょうひんの ボタンで いれられます。'; localize(REF.q.msg); }
+    return;
+  }
   if (typeof Html5Qrcode === 'undefined') {
     scanFeedback(false, 'カメラの じゅんびが できませんでした。しょうひんの ボタンを つかってください。');
     return;
@@ -1078,20 +1095,20 @@ async function startCamera() {
   try {
     const fmts = typeof Html5QrcodeSupportedFormats !== 'undefined' ? [Html5QrcodeSupportedFormats.QR_CODE] : undefined;
     qr = new Html5Qrcode('reader', { formatsToSupport: fmts, experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false });
-    await qr.start({ facingMode: facing },
+    await qr.start(REF.q ? camConfig() : { facingMode: facing },
       { fps: 25, disableFlip: true, qrbox: (w, hh) => { const s = Math.floor(Math.min(w, hh) * 0.8); return { width: Math.max(s, 120), height: Math.max(s, 120) }; } },
       onScan, () => {});
-    if (R) { R.camBtn.textContent = '⏹ カメラを とめる'; R.flipBtn.hidden = false; }
+    if (R && !REF.q) { R.camBtn.textContent = '⏹ カメラを とめる'; R.flipBtn.hidden = false; }
   } catch (e) {
     qr = null;
-    scanFeedback(false, 'カメラを つかえません。しょうひんの ボタンを つかってください。');
+    scanFeedback(false, camChoice.kind === 'device' ? 'えらんだ USBカメラが みつかりません。「カメラ きりかえ」で えらびなおして ください。' : 'カメラを つかえません。「カメラ きりかえ」か、しょうひんの ボタンを つかってください。');
   }
 }
 async function stopCamera() {
   const q = qr;
   qr = null;
   const R = camRefs();
-  if (R) { R.camBtn.textContent = '📷 カメラで よむ'; R.flipBtn.hidden = true; }
+  if (R && !REF.q) { R.camBtn.textContent = '📷 カメラで よむ'; R.flipBtn.hidden = true; }
   if (q) { try { await q.stop(); q.clear(); } catch (e) { /* 無視 */ } }
 }
 async function flipCamera() {
@@ -3475,8 +3492,9 @@ function qStatusText() {
 VIEWS.qreg = () => {
   const R = REF.q = {};
   const g = S.register;
-  R.camBtn = h('button', { class: 'btn sm', onclick: toggleCamera }, '📷 カメラ');
-  R.flipBtn = h('button', { class: 'btn sm', hidden: true, onclick: flipCamera, 'aria-label': 'カメラを きりかえる' }, '🔄');
+  R.camBtn = h('button', { class: 'btn sm', onclick: toggleCamMenu, 'aria-haspopup': 'true', 'aria-expanded': 'false', title: 'カメラ きりかえ' }, camLabel(), ' ▾');
+  R.flipBtn = h('span', { hidden: true });
+  R.camMenu = h('div', { class: 'cammenu', role: 'menu', 'aria-label': 'カメラ きりかえ', hidden: true });
   R.status = h('span', { class: 'qstatus', 'aria-live': 'polite' }, qStatusText());
   R.msg = h('p', { class: 'scanmsg', role: 'status', 'aria-live': 'polite' }, 'ねふだの 二次元コードを カメラに うつして ください。');
   R.scanMsg = R.msg;
@@ -3488,7 +3506,7 @@ VIEWS.qreg = () => {
     h('header', { class: 'qbar' },
       backBtn(() => { stopCamera(); go('quick'); }),
       h('div', { class: 'qtitle' }, h('b', null, g.registerName), h('small', null, g.channel, g.booth && g.booth !== BOOTH_ALL ? '・' + g.booth : ''), R.status),
-      R.camBtn, R.flipBtn),
+      R.camBtn, R.flipBtn, R.camMenu),
     h('div', { class: 'qmain' },
       h('div', { class: 'qleft' },
         h('div', { id: 'reader', class: 'qcam' }),
@@ -3616,6 +3634,53 @@ VIEWS.qsales = () => {
     h('p', { class: 'muted', style: 'font-size:0.85rem' }, 'とりけしは さしひいて います。とりけしと レジじめには せんせいの あんしょう ばんごうが いります。'),
     versionLine());
 };
+
+/* ---------- カメラ きりかえ（外側・内側・USBカメラ・USBリーダー） ---------- */
+async function toggleCamMenu() {
+  const R = REF.q;
+  if (!R) return;
+  if (!R.camMenu.hidden) { closeCamMenu(); return; }
+  R.camMenu.hidden = false; R.camBtn.setAttribute('aria-expanded', 'true');
+  const item = (label, sub, choice, on) => h('button', { class: 'btn' + (on ? ' selected' : ''), role: 'menuitemradio', 'aria-checked': String(!!on), onclick: () => chooseCamera(choice) },
+    on ? '✓ ' : '', label, sub ? h('small', null, sub) : null);
+  const base = () => [
+    h('p', { class: 'muted', style: 'margin:0 0 4px' }, 'ねふだを よむ ほうほう'),
+    item('📷 外側カメラ', '（うしろ）', { kind: 'environment' }, camChoice.kind === 'environment'),
+    item('🤳 内側カメラ', '（まえ・がめんの がわ）', { kind: 'user' }, camChoice.kind === 'user'),
+  ];
+  const tail = () => [
+    item('⌨ USBリーダー', '（バーコードリーダーを つなぐ。カメラは つかわない）', { kind: 'reader' }, camChoice.kind === 'reader'),
+    item('⏹ カメラを とめる', '（しょうひんの ボタンで いれる）', { kind: 'off' }, camChoice.kind === 'off'),
+  ];
+  R.camMenu.replaceChildren(...base(), h('p', { class: 'muted', style: 'margin:4px 0' }, 'USBカメラを さがして います…'), ...tail());
+  localize(R.camMenu);
+  let cams = [];
+  try { if (typeof Html5Qrcode !== 'undefined' && Html5Qrcode.getCameras) cams = await Html5Qrcode.getCameras(); } catch (e) { cams = []; }
+  if (!REF.q || REF.q.camMenu.hidden) return;
+  const builtIn = l => /back|front|rear|facing|背面|前面|内蔵|integrated|facetime/i.test(l);
+  const usb = cams.map((c, i) => item((builtIn(c.label || '') ? '🎥 ' : '🔌 ') + (c.label || 'カメラ ' + (i + 1)), builtIn(c.label || '') ? '' : '（つないだ カメラ）', { kind: 'device', id: c.id, label: c.label || '' }, camChoice.kind === 'device' && camChoice.id === c.id));
+  R.camMenu.replaceChildren(...base(),
+    ...(usb.length ? [h('p', { class: 'muted', style: 'margin:4px 0' }, 'この たんまつの カメラ（USBカメラを ふくむ）'), ...usb]
+      : [h('p', { class: 'muted', style: 'margin:4px 0' }, 'USBカメラは みつかりませんでした（つないだら もういちど ひらいて ください）。')]),
+    ...tail());
+  localize(R.camMenu);
+}
+document.addEventListener('pointerdown', e => {
+  const R = REF.q;
+  if (R && !R.camMenu.hidden && !R.camMenu.contains(e.target) && !R.camBtn.contains(e.target)) closeCamMenu();
+});
+function closeCamMenu() {
+  const R = REF.q;
+  if (!R) return;
+  R.camMenu.hidden = true; R.camBtn.setAttribute('aria-expanded', 'false');
+}
+async function chooseCamera(choice) {
+  setCamChoice(choice);
+  closeCamMenu();
+  if (REF.q) { REF.q.camBtn.replaceChildren(camLabel(), ' ▾'); localize(REF.q.camBtn); }
+  await stopCamera();
+  if (S.screen === 'qreg') await startCamera();
+}
 
 /* すべての定義を読み込んでから起動する */
 boot();
